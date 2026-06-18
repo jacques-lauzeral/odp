@@ -290,7 +290,7 @@ The candidate-derivation read that feeds the integrator's reconciliation workshe
 - `POST /{item}/{id}/decommission`
 - `POST /{item}/{id}/hard-delete`
 
-Soft delete is a state-changing, change-set-bound action, not a bare `DELETE /{id}`: a POST sub-resource lets the body carry `changeSetCommit` and keeps it uniform with the other transitions, whereas the `DELETE` verb has no body convention and doesn't fit the change-set model.
+Soft delete is a state-changing, change-set-bound action, not a bare `DELETE /{id}`: a POST sub-resource lets the body carry `changeSetCommit` and keeps it uniform with the other transitions, whereas the `DELETE` verb has no body convention and doesn't fit the change-set model. `DELETE /{id}` is **not** displaced — it remains the whole-item hard destroy (all versions). Soft delete and hard delete therefore coexist as `POST /{id}/delete` and `DELETE /{id}` respectively; the slightly inverted verb-to-rarity mapping (the common action on the sub-path, the rare destructive one on the natural verb) is accepted for now and revisited when hard delete is properly surfaced under DEL-04 (§5.4).
 
 **Mixed batch** — top-level, mapping to `BatchService.applyLifecycleBatch`:
 
@@ -308,9 +308,9 @@ No dedicated `/deleted` / `/released` / `/decommissioned` paths — they are fac
 
 **Lifecycle flags** ride the existing item read projection (§4.1) — they appear on `GET /{item}` and `GET /{item}/{id}` responses at every projection (summary / standard / extended); no separate endpoint.
 
-**Error mapping.** A refused transition (failed lifecycle-state guard, or external blockers present) returns `409 CONFLICT` with a structured envelope carrying the failing item(s) and, for blocking failures, the blocker list as `OperationalEntityReference[]`. The batch endpoint reports per-item failures in the same envelope shape.
+**Error mapping.** A refused transition returns `409 CONFLICT`. Two distinct service-layer codes drive it: `INVALID_LIFECYCLE_STATE` (the lifecycle-state guard failed — e.g. the item is `released`, or not in the `deleted` state on restore) and `LIFECYCLE_BLOCKED` (external blockers present), the latter carrying the blocker list as `OperationalEntityReference[]`. The batch endpoint reports per-item failures in the same envelope shape.
 
-**OpenAPI.** The per-item lifecycle paths (`/delete`, `/restore`, `/release`, `/decommission`, `/hard-delete`) are declared in `openapi-operational.yml`, which already owns the operational-requirement and operational-change resources; the existing read endpoints there (both the list `GET /{item}` and the single-item `GET /{item}/{id}`) gain the `lifecycleFace` query parameter, and the single-item resource gains the `inbound-references` sub-path. The mixed batch goes in a new **`openapi-batch.yml`** (`/batch/lifecycle` + the `LifecycleBatchRequest` schema), referenced from `openapi.yml` alongside the other split specs. Shared schemas live in `openapi-base.yml`: the inbound-reference list reuses the existing `OperationalEntityReference` schema (no new schema needed — its `type` enum `ON | OR | OC` already covers every reference, which is always an O\*); the four lifecycle flags added at the **summary tier** of the `OperationalRequirement` / `OperationalChange` response schemas so they are present across all three projections; and a refusal `409` reusing the existing `Error` envelope with a new code (e.g. `LIFECYCLE_BLOCKED`) carrying the inbound-reference list.
+**OpenAPI.** The per-item lifecycle paths (`/delete`, `/restore`, `/release`, `/decommission`, `/hard-delete`) are declared in `openapi-operational.yml`, which already owns the operational-requirement and operational-change resources; the existing read endpoints there (both the list `GET /{item}` and the single-item `GET /{item}/{id}`) gain the `lifecycleFace` query parameter, and the single-item resource gains the `inbound-references` sub-path. The mixed batch goes in a new **`openapi-batch.yml`** (`/batch/lifecycle` + the `LifecycleBatchRequest` schema), referenced from `openapi.yml` alongside the other split specs. Shared schemas live in `openapi-base.yml`: the inbound-reference list reuses the existing `OperationalEntityReference` schema (no new schema needed — its `type` enum `ON | OR | OC` already covers every reference, which is always an O\*); the four lifecycle flags added at the **summary tier** of the `OperationalRequirement` / `OperationalChange` response schemas so they are present across all three projections; and a refusal `409` carried by a dedicated **`LifecycleConflictResponse`** schema — the standard `Error` envelope (`error: {code, message}`, code one of `LIFECYCLE_BLOCKED` / `INVALID_LIFECYCLE_STATE`) plus a top-level `references` sibling (`OperationalEntityReference[]`, present for `LIFECYCLE_BLOCKED` only). The list is a sibling of `error` rather than nested inside it, so clients that read only `error.code` are unaffected.
 
 ### 4.5 CLI
 
@@ -356,14 +356,14 @@ This section assesses the §4 solution against each requirement: how far up the 
 
 | Req | Priority | model | store | service | REST | CLI | web |
 |---|---|---|---|---|---|---|---|
-| **DEL-01** Referential integrity | P0 | ✅ | ✅ | ◐ | ◐ | ✅ | ◐ |
-| **DEL-02** Published-edition wall | P0 | ✅ | ✅ | ◐ | ◐ | ✅ | ◐ |
+| **DEL-01** Referential integrity | P0 | ✅ | ✅ | ◐ | ✅ | ✅ | ◐ |
+| **DEL-02** Published-edition wall | P0 | ✅ | ✅ | ◐ | ✅ | ✅ | ◐ |
 | **DEL-03** Soft delete & restore | P1 | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ |
 | **DEL-04** Hard delete | P1 | ✅ | ✅ | ◐ | ◐ | ◐ | — |
 | **DEL-05** Edition deletion | P1 | — | ◐ | — | — | — | — |
 | **DEL-06** Release & decommission | P0 \* | ✅ | ✅ | ✅ | ✅ | — | ◐ |
 
-The remaining ◐ on DEL-01/DEL-02 is a single cross-cutting gap — **reference-report presentation (web):** how the inbound-reference list is surfaced to the user (the refusal `409` rendering, and any preemptive display). The service side is settled: `getInboundReferences` returns the live O\* reference list as a flat `OperationalEntityReference[]` (no edition/ordinary distinction — edition captures don't block), and the client combines it with `lifecycleStatus`. Web is partial this round — only the soft-delete-from-the-form refusal path is in scope.
+The remaining ◐ on DEL-01/DEL-02 is a single cross-cutting gap, now confined to the **web** layer — **reference-report presentation:** how the inbound-reference list is surfaced to the user (the refusal `409` rendering, and any preemptive display). The service side is settled: `getInboundReferences` returns the live O\* reference list as a flat `OperationalEntityReference[]` (no edition/ordinary distinction — edition captures don't block), and the client combines it with `lifecycleStatus`. The REST contract is settled (§4.4): the `409` refusal shape is fixed as `LifecycleConflictResponse` (the standard error envelope plus a top-level `references` sibling), and the per-item paths and `lifecycleFace` parameter are pinned. Web is partial this round — only the soft-delete-from-the-form refusal path is in scope. (The service ◐ reflects only that the where-used assembly thinness is shared with the web rendering question; the transition methods themselves are settled — DEL-03 service is ✅.)
 
 DEL-04 (hard delete) and DEL-05 (edition deletion) are **parked**: only their store mechanics are sketched; service / REST / CLI / web were not worked this session. DEL-05 model is n/a (editions are not O*).
 

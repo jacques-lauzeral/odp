@@ -20,7 +20,7 @@ The work splits into two phases, each implemented layer by layer with its ADD co
 
 **Phase B — Deletion.** Soft delete, recycle bin, restore, referential integrity, published-edition wall, hard delete, edition deletion — all built on the Phase A foundation.
 
-> **Status (18 Jun 2026):** §4.1 model/shared ✅ DONE · §4.2 storage ✅ DONE · §4.3 service ✅ DONE · §4.4 REST ⏳ · §4.5 CLI ⏳ · §4.6 web ⏳ · §4.7 ADD (01 ✅, 02 ✅, 03 ✅; 04/07/08 pending) — **in progress.** §4.1/§4.2 were briefly reopened to correct `OperationalEntityReference` scope (O\* only) and `findInboundReferences` (O\* where-used only; edition wall removed, relocated to DEL-04 hard delete) — correction applied across code, ADD 01/02, and design note.
+> **Status (18 Jun 2026):** §4.1 model/shared ✅ DONE · §4.2 storage ✅ DONE · §4.3 service ✅ DONE · §4.4 REST ✅ DONE · §4.5 CLI ⏳ · §4.6 web ⏳ · §4.7 ADD (01 ✅, 02 ✅, 03 ✅, 04 ✅; 07/08 pending) — **in progress.** §4.1/§4.2 were briefly reopened to correct `OperationalEntityReference` scope (O\* only) and `findInboundReferences` (O\* where-used only; edition wall removed, relocated to DEL-04 hard delete) — correction applied across code, ADD 01/02, and design note. §4.4 settled the `409` refusal contract as `LifecycleConflictResponse` (`references` a top-level sibling of `error`) and recorded that `DELETE /:id` persists as the whole-item hard destroy alongside the new `POST /:id/delete` soft delete — design note §4.4 and §5 matrix updated accordingly.
 
 Phase A must complete before Phase B begins. Within each phase the layer order is the project standard: model → store → service → API → CLI → web → ADD.
 
@@ -146,7 +146,16 @@ Layer by layer, ADD companion updated in the same batch. Rationale and full spec
 - Strict-payload rejection (`Validation failed: unexpected field(s)` → 400) on create/update/patch.
 - `release` / `decommission` / `hardDelete` and `BatchService.applyLifecycleBatch` — designed, build deferred.
 
-### 4.4 REST API
+### 4.4 REST API ✅ DONE
+
+> **As-built refinements (vs the sketch below):**
+> - Soft-delete/restore body carries the change-set commit the same way `DELETE /:id/milestones/:milestoneKey` does — the route reads `changeSetId`/`note` from `req.body` and passes an explicit `changeSetCommit`; both return the updated entity (`200`).
+> - `lifecycleFace` extracted via a new `getLifecycleFace(req)` helper on `VersionedItemRouter` (default `active`), threaded as the **trailing** argument to `service.getAll` / `getById`. Exclusivity with `edition` is **not** resolved in the route — the service's `_assertFaceEditionExclusive` rejects it with a `Validation failed:` message; a `Validation failed:` arm was added to **both** read-route catches so it maps to 400 (previously those catches fell through to 500).
+> - `409` refusal contract fixed as **`LifecycleConflictResponse`**: the standard `{error: {code, message}}` envelope plus a top-level `references` sibling (present for `LIFECYCLE_BLOCKED` only). `references` is a sibling of `error`, not nested, so clients reading only `error.code` are unaffected.
+> - `GET /:id/inbound-references` uses `getUserOptional` (anonymous-allowed), consistent with the other reads.
+> - The lifecycle routes are concrete on `VersionedItemRouter`, reaching OR/OC only; `chapter.js` is standalone and exposes none (chapters have no lifecycle). No `ChapterRouter` suppression needed.
+> - `DELETE /:id` left untouched — it remains the whole-item hard destroy. Soft delete deliberately takes the `POST /:id/delete` sub-path rather than displacing it; the hard/soft verb assignment is a DEL-04 revisit (design note §4.4, §5.4).
+> - Base-contract cleanup: the stale Phase-A `status` (`ACTIVE`/`DELETED`) field was replaced by the `lifecycleStatus` block on the OR/OC response schemas and **removed entirely** from the Chapter schema.
 
 - Per-item lifecycle actions `POST /{item}/{id}/{delete|restore}` in-round; `/release` `/decommission` `/hard-delete` deferred.
 - `lifecycleFace` query parameter on **both** the list `GET /{item}` and the single-item `GET /{item}/{id}` (mutually exclusive with `edition`); `GET /{item}/{id}/inbound-references`.
@@ -194,7 +203,7 @@ These are settled in the design note but surface as concrete code choices:
 | REST API | `/audit-events` resource, `x-user-role`, schema cleanup, `/versions` list removal | per-item delete/restore, `lifecycleFace` on list + single-item reads, `inbound-references` sub-path, `ServiceError` → `409` mapping |
 | CLI | `audit-event` command | delete/restore verbs, `list`/`show --lifecycle-status` |
 | web | History view (client-built over audit query) | soft-delete from O* detail form (rest P1+) |
-| ADD | 6 chapters (01–04 done, 07/08 pending) | 01 ✅, 02 ✅, 03 ✅; 04/07/08 pending |
+| ADD | 6 chapters (01–04 done, 07/08 pending) | 01 ✅, 02 ✅, 03 ✅, 04 ✅; 07/08 pending |
 
 ---
 

@@ -87,6 +87,14 @@ paths:
             type: string
           description: "Filter by ON Item ID: return ORs that implement the given ON (IMPLEMENTS relationship). Single Item ID."
           example: "42"
+        - name: lifecycleFace
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, released, decommissioned, deleted]
+            default: active
+          description: "Lifecycle dataset selector (live dataset only). Mutually exclusive with edition; a non-active face combined with edition is rejected (400)."
         - name: projection
           in: query
           required: false
@@ -163,6 +171,14 @@ paths:
           schema:
             type: string
           description: "Optional edition ID. When provided, returns the requirement in the edition context. Omit for repository (latest version)."
+        - name: lifecycleFace
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, released, decommissioned, deleted]
+            default: active
+          description: "Lifecycle dataset selector (live dataset only). Mutually exclusive with edition; a non-active face combined with edition is rejected (400)."
         - name: projection
           in: query
           required: false
@@ -309,6 +325,127 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
 
+  /operational-requirements/{id}/delete:
+    post:
+      summary: Soft-delete operational requirement (Active to Deleted)
+      description: |
+        Moves the item to the Deleted lifecycle face (recycle bin). Refused if
+        the item is Released (INVALID_LIFECYCLE_STATE) or has blocking live O*
+        inbound references (LIFECYCLE_BLOCKED, with the reference list in the body).
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changeSetId]
+              properties:
+                changeSetId:
+                  type: string
+                note:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+        '404':
+          description: Not Found, or referenced change set not found (CHANGESET_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '409':
+          description: |
+            Lifecycle conflict — INVALID_LIFECYCLE_STATE (item is Released or not
+            Active), LIFECYCLE_BLOCKED (blocking inbound references, list in body),
+            or the referenced change set is closed (CHANGESET_CLOSED).
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/LifecycleConflictResponse'
+
+  /operational-requirements/{id}/restore:
+    post:
+      summary: Restore operational requirement (Deleted to Active)
+      description: |
+        Moves the item from the Deleted face back to Active. Refused if the item
+        is not in the Deleted state (INVALID_LIFECYCLE_STATE). No reference check.
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changeSetId]
+              properties:
+                changeSetId:
+                  type: string
+                note:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+        '404':
+          description: Not Found, or referenced change set not found (CHANGESET_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '409':
+          description: |
+            Lifecycle conflict — INVALID_LIFECYCLE_STATE (item is not Deleted), or
+            the referenced change set is closed (CHANGESET_CLOSED).
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/LifecycleConflictResponse'
+
+  /operational-requirements/{id}/inbound-references:
+    get:
+      summary: Live O* items referencing this operational requirement (where-used)
+      description: |
+        Returns the flat list of live O* inbound references. Does not decide
+        deletability — the client combines it with the item's lifecycleStatus.
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/OperationalEntityReference'
+
   # Operational Change Endpoints
   /operational-changes:
     get:
@@ -358,6 +495,14 @@ paths:
             type: string
           description: "Filter by OR Item ID: return OCs that implement the given OR (IMPLEMENTS relationship). Single Item ID."
           example: "42"
+        - name: lifecycleFace
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, released, decommissioned, deleted]
+            default: active
+          description: "Lifecycle dataset selector (live dataset only). Mutually exclusive with edition; a non-active face combined with edition is rejected (400)."
         - name: projection
           in: query
           required: false
@@ -434,6 +579,14 @@ paths:
           schema:
             type: string
           description: "Optional edition ID. When provided, returns the change in the edition context. Omit for repository (latest version)."
+        - name: lifecycleFace
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, released, decommissioned, deleted]
+            default: active
+          description: "Lifecycle dataset selector (live dataset only). Mutually exclusive with edition; a non-active face combined with edition is rejected (400)."
         - name: projection
           in: query
           required: false
@@ -579,3 +732,124 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+
+  /operational-changes/{id}/delete:
+    post:
+      summary: Soft-delete operational change (Active to Deleted)
+      description: |
+        Moves the item to the Deleted lifecycle face (recycle bin). Refused if
+        the item is Released (INVALID_LIFECYCLE_STATE) or has blocking live O*
+        inbound references (LIFECYCLE_BLOCKED, with the reference list in the body).
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changeSetId]
+              properties:
+                changeSetId:
+                  type: string
+                note:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+        '404':
+          description: Not Found, or referenced change set not found (CHANGESET_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '409':
+          description: |
+            Lifecycle conflict — INVALID_LIFECYCLE_STATE (item is Released or not
+            Active), LIFECYCLE_BLOCKED (blocking inbound references, list in body),
+            or the referenced change set is closed (CHANGESET_CLOSED).
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/LifecycleConflictResponse'
+
+  /operational-changes/{id}/restore:
+    post:
+      summary: Restore operational change (Deleted to Active)
+      description: |
+        Moves the item from the Deleted face back to Active. Refused if the item
+        is not in the Deleted state (INVALID_LIFECYCLE_STATE). No reference check.
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changeSetId]
+              properties:
+                changeSetId:
+                  type: string
+                note:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+        '404':
+          description: Not Found, or referenced change set not found (CHANGESET_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '409':
+          description: |
+            Lifecycle conflict — INVALID_LIFECYCLE_STATE (item is not Deleted), or
+            the referenced change set is closed (CHANGESET_CLOSED).
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/LifecycleConflictResponse'
+
+  /operational-changes/{id}/inbound-references:
+    get:
+      summary: Live O* items referencing this operational change (where-used)
+      description: |
+        Returns the flat list of live O* inbound references. Does not decide
+        deletability — the client combines it with the item's lifecycleStatus.
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/OperationalEntityReference'

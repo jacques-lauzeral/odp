@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { StoreErrorCode } from '../store/transaction.js';
+import { ServiceErrorCode } from '../services/service-error.js';
 
 /**
  * VersionedItemRouter provides versioned CRUD routes for operational entity services.
@@ -45,6 +46,15 @@ export class VersionedItemRouter {
     }
 
     /**
+     * Extract the lifecycle face (dataset selector) from query parameters.
+     * Defaults to 'active'. Mutual exclusivity with `edition` is enforced
+     * by the service (_assertFaceEditionExclusive); the route forwards both.
+     */
+    getLifecycleFace(req) {
+        return req.query.lifecycleFace || 'active';
+    }
+
+    /**
      * Extract and validate projection from query parameters
      * @param {Object} req - Express request object
      * @param {string[]} allowed - Allowed projection values for this endpoint
@@ -74,11 +84,12 @@ export class VersionedItemRouter {
             try {
                 const user = this.getUserOptional(req);
                 const editionId = this.getEditionId(req);
+                const lifecycleFace = this.getLifecycleFace(req);
                 const filters = this.getContentFilters(req);
                 const projection = this.getProjection(req, ['summary', 'standard']);
 
-                console.log(`${this.service.constructor.name}.getAll() user: ${user?.id ?? null}, editionId: ${editionId}, projection: ${projection}, filters:`, filters);
-                const entities = await this.service.getAll(user, editionId, filters, projection);
+                console.log(`${this.service.constructor.name}.getAll() user: ${user?.id ?? null}, editionId: ${editionId}, lifecycleFace: ${lifecycleFace}, projection: ${projection}, filters:`, filters);
+                const entities = await this.service.getAll(user, editionId, filters, projection, lifecycleFace);
                 res.json(entities);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
@@ -88,6 +99,8 @@ export class VersionedItemRouter {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else if (error.message.includes('Invalid filter parameter') || error.message.includes('Invalid category ID') || error.message.includes('Invalid projection')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.message.includes('Validation failed:')) {
+                    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
                 }
@@ -99,9 +112,10 @@ export class VersionedItemRouter {
             try {
                 const user = this.getUserOptional(req);
                 const editionId = this.getEditionId(req);
+                const lifecycleFace = this.getLifecycleFace(req);
                 const projection = this.getProjection(req, ['standard', 'extended']);
-                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, user: ${user?.id ?? null}, editionId: ${editionId}, projection: ${projection}`);
-                const entity = await this.service.getById(req.params.id, user, editionId, projection);
+                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, user: ${user?.id ?? null}, editionId: ${editionId}, lifecycleFace: ${lifecycleFace}, projection: ${projection}`);
+                const entity = await this.service.getById(req.params.id, user, editionId, projection, lifecycleFace);
                 if (!entity) {
                     const context = editionId ? ` in edition ${editionId}` : '';
                     return res.status(404).json({
@@ -117,6 +131,8 @@ export class VersionedItemRouter {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else if (error.message.includes('Invalid projection')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.message.includes('Validation failed:')) {
+                    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
                 }
@@ -257,6 +273,86 @@ export class VersionedItemRouter {
                 res.status(204).send();
             } catch (error) {
                 console.error(`Error deleting ${this.entityName}:`, error);
+                if (error.message.includes('x-user-id')) {
+                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else {
+                    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+                }
+            }
+        });
+
+        // Soft-delete entity (Active -> Deleted lifecycle edge move)
+        // Body carries the change-set commit: { changeSetId, note? }
+        this.router.post('/:id/delete', async (req, res) => {
+            try {
+                const user = this.getUser(req);
+                const changeSetCommit = { changeSetId: req.body.changeSetId, note: req.body.note };
+                console.log(`${this.service.constructor.name}.softDelete() itemId: ${req.params.id}, user: ${user?.id ?? null}`);
+                const entity = await this.service.softDelete(req.params.id, changeSetCommit, user);
+                if (!entity) {
+                    return res.status(404).json({
+                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
+                    });
+                }
+                res.json(entity);
+            } catch (error) {
+                console.error(`Error soft-deleting ${this.entityName}:`, error);
+                if (error.message.includes('x-user-id')) {
+                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.code === ServiceErrorCode.LIFECYCLE_BLOCKED) {
+                    res.status(409).json({ error: { code: 'LIFECYCLE_BLOCKED', message: error.message }, references: error.references });
+                } else if (error.code === ServiceErrorCode.INVALID_LIFECYCLE_STATE) {
+                    res.status(409).json({ error: { code: 'INVALID_LIFECYCLE_STATE', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+                    res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+                    res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
+                } else {
+                    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+                }
+            }
+        });
+
+        // Restore entity (Deleted -> Active lifecycle edge move)
+        // Body carries the change-set commit: { changeSetId, note? }
+        this.router.post('/:id/restore', async (req, res) => {
+            try {
+                const user = this.getUser(req);
+                const changeSetCommit = { changeSetId: req.body.changeSetId, note: req.body.note };
+                console.log(`${this.service.constructor.name}.restore() itemId: ${req.params.id}, user: ${user?.id ?? null}`);
+                const entity = await this.service.restore(req.params.id, changeSetCommit, user);
+                if (!entity) {
+                    return res.status(404).json({
+                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
+                    });
+                }
+                res.json(entity);
+            } catch (error) {
+                console.error(`Error restoring ${this.entityName}:`, error);
+                if (error.message.includes('x-user-id')) {
+                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.code === ServiceErrorCode.INVALID_LIFECYCLE_STATE) {
+                    res.status(409).json({ error: { code: 'INVALID_LIFECYCLE_STATE', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+                    res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+                    res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
+                } else {
+                    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+                }
+            }
+        });
+
+        // Preemptive where-used read: live O* items referencing this one.
+        // Does not decide deletability — the client combines it with lifecycleStatus.
+        this.router.get('/:id/inbound-references', async (req, res) => {
+            try {
+                const user = this.getUserOptional(req);
+                console.log(`${this.service.constructor.name}.getInboundReferences() itemId: ${req.params.id}, user: ${user?.id ?? null}`);
+                const references = await this.service.getInboundReferences(req.params.id, user);
+                res.json(references);
+            } catch (error) {
+                console.error(`Error fetching inbound references for ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {

@@ -27,10 +27,13 @@ DELETE /:id        → service.deleteItem(id, user)
 Used by `operational-requirement.js` and `operational-change.js`. Wires the full versioned entity surface including edition-context list/get, patch, and specific-version retrieval:
 
 ```
-GET    /                          → service.getAll(user, editionId, filters, projection)
-GET    /:id                       → service.getById(id, user, editionId, projection)
+GET    /                          → service.getAll(user, editionId, filters, projection, lifecycleFace)
+GET    /:id                       → service.getById(id, user, editionId, projection, lifecycleFace)
 GET    /:id/versions/:versionNum  → service.getByIdAndVersion(id, versionNum, user)
+GET    /:id/inbound-references    → service.getInboundReferences(id, user)
 POST   /                          → service.create(body, user)
+POST   /:id/delete                → service.softDelete(id, changeSetCommit, user)
+POST   /:id/restore               → service.restore(id, changeSetCommit, user)
 PUT    /:id                       → service.update(id, body, expectedVersionId, user)
 PATCH  /:id                       → service.patch(id, body, expectedVersionId, user)
 DELETE /:id                       → service.delete(id, user)
@@ -40,7 +43,15 @@ There is **no version-history route** (Phase A — audit foundation). The former
 
 `editionId` is extracted from `req.query.edition` (optional). When absent the service queries the repository (latest versions).
 
+`lifecycleFace` is extracted from `req.query.lifecycleFace` (optional, default `active`), passed as the trailing argument to `getAll` / `getById`. It is the dataset selector for the live dataset — the peer of `editionId` and mutually exclusive with it. The route forwards both without resolving the exclusivity; the service's `_assertFaceEditionExclusive` rejects a non-`active` face combined with `edition` (a `Validation failed:` message → 400, mapped on the read routes by the prefix arm). Values: `active` / `released` / `decommissioned` / `deleted`.
+
 `projection` is extracted from `req.query.projection` via `getProjection(req, allowed)`. Allowed values on `GET /` are `summary` and `standard`; on `GET /:id` they are `standard` and `extended`. Default is `standard` in both cases. An invalid value returns 400.
+
+**Lifecycle transitions (Phase B — deletion).** `POST /:id/delete` and `POST /:id/restore` are soft delete and restore — the `LATEST_VERSION`↔`DELETED_VERSION` edge moves, not hard destruction. They carry no entity body; like `DELETE /:id/milestones/:milestoneKey`, the route reads `changeSetId`/`note` from `req.body` and passes an explicit `changeSetCommit` to the service. Both return the updated entity (`200`). The service guards them: `softDelete` refuses a `released` item or one with blocking live inbound references; `restore` refuses an item not in the Deleted state (see §4 for the status mapping). `DELETE /:id` is unchanged — it remains the whole-item hard destroy (all versions); soft delete deliberately takes the `POST /:id/delete` sub-path rather than displacing it (the hard/soft verb assignment is revisited when DEL-04 lands).
+
+`GET /:id/inbound-references` is the preemptive where-used read — the live O\* items referencing this one, as a flat `OperationalEntityReference[]`. It does **not** decide deletability; the client combines it with the item's `lifecycleStatus`. Anonymous access is allowed, consistent with the other reads.
+
+These lifecycle routes are defined once on `VersionedItemRouter`, so they apply to `operational-requirement.js` and `operational-change.js` only. `chapter.js` is a standalone router (§2.3) and exposes none of them — chapters have no lifecycle (the service overrides `softDelete` / `restore` / `getInboundReferences` to throw).
 
 `operational-change.js` extends this with milestone sub-resource routes:
 
@@ -148,10 +159,14 @@ Route handlers catch errors thrown by services and map them to HTTP responses:
 | Change set not found on a versioned write | 404 | `CHANGESET_NOT_FOUND` |
 | Change set closed on a versioned write | 409 | `CHANGESET_CLOSED` |
 | `changeSetId` missing on a versioned write | 400 | `VALIDATION_ERROR` |
+| Soft delete refused — invalid lifecycle state | 409 | `INVALID_LIFECYCLE_STATE` |
+| Soft delete refused — blocking inbound references | 409 | `LIFECYCLE_BLOCKED` |
 | PUT/DELETE on immutable entity | 405 | `METHOD_NOT_ALLOWED` |
 | Unhandled / unexpected error | 500 | `INTERNAL_ERROR` |
 
 The two change-set conditions are detected authoritatively inside the write transaction by the store, which throws a `StoreError` tagged with a stable `error.code` (`StoreErrorCode.CHANGESET_NOT_FOUND` / `CHANGESET_CLOSED`, declared in `store/transaction.js`). The versioned, milestone, and chapter write handlers switch on `error.code` — not on the message — to choose 404 / 409. A missing `changeSetId` is a request-shape error: the store rewords it to a `Validation failed:` message so it rides the existing 400 arm without a dedicated code. `CHANGESET_CLOSED` is reported distinctly from `VERSION_CONFLICT` so a client can tell "the change set you picked is closed" from "someone else edited this item."
+
+The two lifecycle conditions follow the same discriminator pattern at the service layer: `softDelete` / `restore` throw a typed `ServiceError` tagged with `ServiceErrorCode.INVALID_LIFECYCLE_STATE` or `LIFECYCLE_BLOCKED` (declared in `services/service-error.js`), which the lifecycle route handlers switch on. `LIFECYCLE_BLOCKED` carries a `references` array (the blocking live O\* inbound references), surfaced as a top-level sibling of `error` in the 409 body so the existing `{error: {code, message}}` envelope is unchanged for clients that ignore it — the `LifecycleConflictResponse` schema in `openapi-base.yml`. `INVALID_LIFECYCLE_STATE` carries no `references`. The `BAD_REQUEST` face/edition-exclusivity case is not in this table — it rides the `Validation failed:` 400 arm.
 
 All error responses use the standard envelope:
 

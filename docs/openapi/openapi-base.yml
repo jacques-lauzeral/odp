@@ -50,6 +50,50 @@ components:
           type: string
           enum: [ON, OR, OC]
 
+    LifecycleStatus:
+      type: object
+      description: |
+        Derived lifecycle flags computed from the presence of lifecycle edges
+        on the item's version node (LATEST_VERSION / RELEASED_VERSION /
+        DECOMMISSIONED_VERSION / DELETED_VERSION). At most two co-occur (e.g.
+        an item may be both active and released). Read-only — never sent on a
+        request payload (FORBIDDEN in the request models).
+      properties:
+        active:
+          type: boolean
+          description: "LATEST_VERSION present — the live, editable current version"
+        released:
+          type: boolean
+          description: "RELEASED_VERSION present — in production (DEL-06)"
+        decommissioned:
+          type: boolean
+          description: "DECOMMISSIONED_VERSION present — operationally retired (DEL-06)"
+        deleted:
+          type: boolean
+          description: "DELETED_VERSION present — soft-deleted, in the recycle bin"
+
+    LifecycleConflictResponse:
+      type: object
+      description: |
+        409 body for a refused soft delete. Carries the standard error envelope
+        plus a top-level references array (the blocking live O* inbound
+        references) for the LIFECYCLE_BLOCKED case. references is absent for
+        INVALID_LIFECYCLE_STATE.
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum: [LIFECYCLE_BLOCKED, INVALID_LIFECYCLE_STATE]
+            message:
+              type: string
+        references:
+          type: array
+          description: "Blocking live O* inbound references — present for LIFECYCLE_BLOCKED only"
+          items:
+            $ref: '#/components/schemas/OperationalEntityReference'
+
     # Setup Entity Schemas
     StakeholderCategory:
       type: object
@@ -217,10 +261,9 @@ components:
         # --- summary fields (all projections) ---
         itemId:
           type: string
-        status:
-          type: string
-          enum: [ACTIVE, DELETED]
-          description: "Item lifecycle status (Phase A). DELETED items are excluded from live dataset."
+        lifecycleStatus:
+          $ref: '#/components/schemas/LifecycleStatus'
+          description: "Derived lifecycle flags (summary tier, all projections)"
         title:
           type: string
         versionId:
@@ -549,10 +592,9 @@ components:
         # --- summary fields (all projections) ---
         itemId:
           type: string
-        status:
-          type: string
-          enum: [ACTIVE, DELETED]
-          description: "Item lifecycle status (Phase A). DELETED items are excluded from live dataset."
+        lifecycleStatus:
+          $ref: '#/components/schemas/LifecycleStatus'
+          description: "Derived lifecycle flags (summary tier, all projections)"
         title:
           type: string
         versionId:
@@ -835,10 +877,6 @@ components:
       properties:
         itemId:
           type: string
-        status:
-          type: string
-          enum: [ACTIVE, DELETED]
-          description: "Item lifecycle status (Phase A)."
         code:
           type: string
           description: "Stable chapter identifier (= chapter key from edition.json) — set at bootstrap"
