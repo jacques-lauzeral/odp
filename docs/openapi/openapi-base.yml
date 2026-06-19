@@ -4,11 +4,7 @@ components:
       type: apiKey
       in: header
       name: X-User-ID
-    UserRole:
-      type: apiKey
-      in: header
-      name: X-User-Role
-      description: "Optional role header. Role validation and implicit population arrive with RBA (P2). Frozen onto AuditEvent at write time; null until RBA populates it."
+      description: "The user's email address. Validated against users.yaml by the server's resolveUser() middleware on every request; the role is server-derived (never client-declared). An unrecognised email is rejected with 401 UNKNOWN_USER."
 
   schemas:
     Error:

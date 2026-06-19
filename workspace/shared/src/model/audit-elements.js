@@ -1,7 +1,8 @@
 /**
  * @file audit-elements.js
  * @description The AuditEvent entity model and its supporting enums
- * (AuditAction, AuditTargetType, UserRole, ItemStatus).
+ * (AuditAction, AuditTargetType, ItemStatus). The UserRole enum it references
+ * for AuditEvent.userRole now lives in model/user-roles.js.
  *
  * An AuditEvent is the SOLE authoritative record of every consequential write.
  * No audit information is duplicated on item or version nodes: who / when / why
@@ -57,21 +58,6 @@ export const AuditTargetTypeKeys   = Object.keys(AuditTargetType);
 export const AuditTargetTypeValues = Object.values(AuditTargetType);
 export const isAuditTargetTypeValid    = (v) => AuditTargetTypeKeys.includes(v);
 export const getAuditTargetTypeDisplay = (k) => AuditTargetType[k] || k;
-
-/**
- * The role under which a consequential write was performed.
- * Writer roles only — passive users perform no consequential writes, so no
- * AuditEvent ever carries a passive role. Source: blueprint RBA section.
- */
-export const UserRole = {
-    DOMAIN_WRITER: 'DOMAIN_WRITER',
-    ICDM:          'ICDM',
-    INTEGRATOR:    'INTEGRATOR',
-};
-export const UserRoleKeys   = Object.keys(UserRole);
-export const UserRoleValues = Object.values(UserRole);
-export const isUserRoleValid    = (v) => UserRoleKeys.includes(v);
-export const getUserRoleDisplay = (k) => UserRole[k] || k;
 
 /**
  * Lifecycle status of a versioned item. The only lifecycle field retained on

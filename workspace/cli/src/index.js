@@ -24,20 +24,18 @@ program
     .name('odp')
     .description('Operational Deployment Plan CLI')
     .version('1.0.0')
-    .option('--user <userId>', 'User identifier for audit context (required)')
-    .option('--role <role>', 'User role for authorization context (default: INTEGRATOR)')
+    .option('--user <email>', 'User email for identity/audit context (required)')
     .hook('preAction', (thisCommand, actionCommand) => {
         const options = thisCommand.opts();
         if (!options.user) {
             console.error('Error: --user argument is required for all operations');
-            console.error('Usage: npm run dev -- --user <userId> <command> [options]');
+            console.error('Usage: npm run dev -- --user <email> <command> [options]');
             console.error('');
             console.error('Examples:');
-            console.error('  npm run dev -- --user john.doe stakeholder-category list');
-            console.error('  npm run dev -- --user jane.smith chapter list');
-            console.error('  npm run dev -- --user bin requirement show 123');
-            console.error('  npm run dev -- --user bin baseline create "Q1 2025 Release"');
-            console.error('  npm run dev -- --user bin odp-edition create "Q1 Edition" 123 DRAFT 456');
+            console.error('  npm run dev -- --user john.doe@eurocontrol.int stakeholder-category list');
+            console.error('  npm run dev -- --user jane.smith@eurocontrol.int chapter list');
+            console.error('  npm run dev -- --user admin@eurocontrol.int requirement show 123');
+            console.error('  npm run dev -- --user admin@eurocontrol.int baseline create "Q1 2025 Release"');
             process.exit(1);
         }
     });

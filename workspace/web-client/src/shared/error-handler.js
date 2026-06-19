@@ -84,6 +84,14 @@ export class ErrorHandler {
 
     handleApiError(error) {
         switch (error.status) {
+            case 403:
+                return {
+                    type: 'api-forbidden',
+                    title: 'Not Permitted',
+                    message: 'You do not have permission to perform this action.',
+                    showToUser: true,
+                    retry: false
+                };
             case 400:
                 return {
                     type: 'api-validation',

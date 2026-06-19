@@ -234,8 +234,8 @@ The image is built locally and tagged `$ODIP_DOCKER_REGISTRY/odp-server:latest`.
 
 | Service | URL | Credentials |
 |---|---|---|
-| Web Client | http://localhost:3000 | None (user name entry only) |
-| ODP API | http://localhost:8080 | `x-user-id` request header |
+| Web Client | http://localhost:3000 | Email identification (validated against `users.yaml`) |
+| ODP API | http://localhost:8080 | `x-user-id` request header (the user's email) |
 | Neo4j Browser | http://localhost:7474 | neo4j / password123 |
 
 In the Eurocontrol environment the web client is accessible from remote browsers at `http://dhws097:3000`; the API base URL in `web-client/src/config/api.js` is set to `http://<hostname>:8080` to support this.
@@ -262,11 +262,12 @@ odip-admin start
 
 `odip-admin install` performs all one-time setup steps:
 1. Creates runtime directories (`ensure_runtime_dirs`) — creates all 15 `works*/` dirs with `chmod 777`
-2. Bootstraps each works dir from the corresponding config source dirs under `$ODIP_REPO/publication/`
-3. Runs `npm install` in each works dir if `node_modules/` absent (host side, proxy-aware via `~/.npmrc`)
-4. Runs `npm install` for all workspaces (server, web-client, cli)
-5. Builds `odp-server` image from `Dockerfile.odp-server`
-6. Builds `web-client` image from `Dockerfile.web-client`
+2. Deploys config (`deploy_config_files`) — copies the four YAML config files (`domains.yaml`, `edition.yaml`, `users.yaml`, `permissions.yaml`) from `$ODIP_REPO/workspace/server/config/` to `$ODIP_HOME/config/`, and removes any superseded `domains.json` / `edition.json`
+3. Bootstraps each works dir from the corresponding config source dirs under `$ODIP_REPO/publication/`
+4. Runs `npm install` in each works dir if `node_modules/` absent (host side, proxy-aware via `~/.npmrc`)
+5. Runs `npm install` for all workspaces (server, web-client, cli)
+6. Builds `odp-server` image from `Dockerfile.odp-server`
+7. Builds `web-client` image from `Dockerfile.web-client`
 
 The domain list for per-DrG works dirs is derived from `$ODIP_REPO/publication/shared/content/` subdirectories — adding a new DrG static content directory automatically creates a new works dir on next `odip-admin install`.
 
@@ -334,6 +335,9 @@ odip-admin load -b adhoc/20260211-1430       # relative paths are resolved to ab
 odip-admin reset                             # requires YES confirmation; pre-reset dump saved to backups/reset/<timestamp>/
 odip-admin standby                           # manual standby
 odip-admin resume                            # manual resume
+odip-admin config-reload                     # reload users.yaml + permissions.yaml (no restart)
+odip-admin config-reload --users             # reload users.yaml only
+odip-admin config-reload --permissions       # reload permissions.yaml only
 odip-admin dumps                             # list dumps across auto / adhoc / reset sections
 ```
 
@@ -378,8 +382,11 @@ odip-backup -b /path/to/backup-base
 | `POST /admin/standby` | Server rejects all non-admin requests with 503 |
 | `POST /admin/resume` | Server resumes normal operation |
 | `GET /admin/status` | Returns `{ status: "standby" \| "running" }` |
+| `POST /admin/config/reload?configs=users,permissions` | Live-reload the named runtime configs (no restart) |
 
 The server module is `server/src/routes/admin.js`; it exports `standbyMiddleware` (registered before all other routes in `index.js`) and `adminRouter` (mounted at `/admin`).
+
+The `/admin` surface is mounted **above** the RBA middleware and is therefore not matrix-governed — it is protected as a whole by network isolation (localhost-only). `POST /admin/config/reload` (wrapped by `odip-admin config-reload`) re-reads `users.yaml` and/or `permissions.yaml` and applies them atomically: if a file fails validation, none of the requested configs change and the previously loaded config stays active. `domains.yaml` and `edition.yaml` are structural and not reloadable — changing them requires a restart.
 
 ---
 

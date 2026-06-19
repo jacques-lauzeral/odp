@@ -18,6 +18,8 @@ import qualityRoutes from './routes/quality.js';
 import changeSetRoutes from './routes/change-set.js';
 import { loadConfig, getDomainChapterSlugs } from './config/loader.js';
 import { standbyMiddleware, adminRouter } from './routes/admin.js';
+import { resolveUser, requirePermission } from './middleware/rba.js';
+import authRoutes from './routes/auth.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -33,7 +35,7 @@ app.use('/import', express.raw({ type: ['application/yaml', 'text/yaml'], limit:
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id, x-user-role');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id');
 
     if (req.method === 'OPTIONS') {
         res.sendStatus(200);
@@ -72,6 +74,16 @@ app.use((req, res, next) => {
 // Standby middleware — must be before all routes
 app.use(standbyMiddleware);
 app.use('/admin', adminRouter);
+
+// /auth is a no-auth surface (the client validates its email here before it has
+// a role) — mounted above the RBA middleware so resolveUser never gates it.
+app.use('/auth', authRoutes);
+
+// RBA — resolve identity (SSO seam), then enforce the permission matrix.
+// Placed after /admin and /auth so both stay outside the matrix; OPTIONS
+// preflight is already short-circuited by the CORS middleware above.
+app.use(resolveUser);
+app.use(requirePermission);
 
 // Health check
 app.get('/ping', (req, res) => {
@@ -234,9 +246,11 @@ async function startServer() {
             console.log(`ODIP Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/ping`);
             console.log(`API endpoints:`);
+            console.log(`Auth & Admin:`);
+            console.log(`  - POST http://localhost:${PORT}/auth/identify  (body: { email })`);
+            console.log(`  - POST http://localhost:${PORT}/admin/config/reload?configs=users,permissions`);
             console.log(`Import Operations:`);
-            console.log(`  - POST http://localhost:${PORT}/import/setup (Content-Type: application/yaml)`);
-            console.log(`  - POST http://localhost:${PORT}/import/requirements?drg=<DRG> (Content-Type: application/yaml)`);
+            console.log(`  - POST http://localhost:${PORT}/import/distributed?changeSetId=<id> (Content-Type: application/json)`);
             console.log(`Setup Entities:`);
             console.log(`  - http://localhost:${PORT}/stakeholder-categories`);
             console.log(`  - http://localhost:${PORT}/chapters`);

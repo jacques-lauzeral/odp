@@ -1,6 +1,6 @@
 # ODIP — Roles and Access (RBA) — Design Note
 
-*v0.2 — 19 June 2026 — DRAFT for discussion*
+*v0.3 — 19 June 2026 — web-client design settled (P1/P2); server/CLI/admin layers implemented*
 
 ---
 
@@ -379,20 +379,59 @@ A lightweight POST route, no auth middleware applied. The only client-facing sur
 - **Response 200:** `{ email, role, domains }`
 - **Response 401:** `{ error: { code: 'UNKNOWN_USER' } }`
 
-### 4.3 Client — Connect dialog and role display
+### 4.3 Client — web client RBA
+
+The web-client work splits into two priorities. **Priority 1** is a self-contained, shippable unit: it makes the client correct and secure (email identity, role-derived display, the one coarse Manage gate, and graceful 403 handling) with no permission machinery. **Priority 2** is additive — preemptive control enablement driven by a server-provided grant set — and does not rework anything in Priority 1.
+
+The implementation order within P1 is: `error-handler.js` (smallest) → `api-client.js` → `header.js` → `app.js` → `router.js`, syntax-checking each.
+
+#### Priority 1 — identity rework + 403 handling
 
 **Connect dialog** replaces the current name + role selector:
+- Email address input only — no display-name field, no role selector.
+- **No client-side email validation** — there is no half-measure worth doing; the server is the sole authority. The input collects a string and submits it.
+- On submit: `POST /auth/identify` (this call goes *through* `apiClient`). On `200`: store `{ email, role, domains }` in `localStorage` and call `app.setUser()`. On `401`: show an **inline** dialog error "Email address not recognised".
+- **Carve-out:** the `/auth/identify` call's `401` is handled *locally in the dialog* (inline message), NOT routed to the global error toast. Every other call keeps centralized error handling.
 
-- Email address input only — no display name field, no role selector
-- On submit: `POST /auth/identify`; on success: store `{ email, role, domains }` in `localStorage`, call `app.setUser()`; on failure: inline error "Email address not recognised"
-- `x-user-id` header sends the email on every subsequent request
-- `x-user-role` header is **dropped** — role is now server-derived, never client-declared
+**Headers** (`api-client.js getHeaders()`):
+- `x-user-id` now sends the **email** (was `this.app.user.name`).
+- `x-user-role` is **dropped** — role is server-derived, never client-declared.
 
-**Role and domain visibility** (header user button):
-- Identified state shows: `email — role label` (e.g. `john.doe@eurocontrol.int — Domain Writer`)
-- Tooltip on hover shows domain scope for `DOMAIN_WRITER`: `Write access: 4DT, AIRSPACE`; empty tooltip for `ICDM` and `INTEGRATOR` (cross-domain)
+**`localStorage` and restore** (decision: keep localStorage; no migration):
+- localStorage is kept as a convenience cache (key `odip-space-user`), **not** a trust store — the server re-validates `x-user-id` against `users.yaml` on every request, so tampering gains nothing.
+- `Header.restoreUser()` is rewritten: on load, if stored state has an `email` (new shape), **re-validate** it via `POST /auth/identify` — restore on `200`, show Connect on `401` (so a user removed from the whitelist is bounced at next load, not just next write).
+- Legacy `{ name, role }` state (no `email`) is **discarded outright** — the existing legacy lowercase-role migration is removed. There is no email to migrate to, and the model changed from self-declared to server-validated.
 
-`Header.restoreUser()` silent migration of legacy lowercase role values (already built) covers existing `localStorage` sessions from the self-declaration era.
+**Role and domain display** (header user button):
+- Identified state shows `email — role label`. Labels are a hardcoded client map: `DOMAIN_WRITER → "Domain Writer"`, `ICDM → "iCDM"`, `INTEGRATOR → "Integrator"`.
+- Tooltip: for `DOMAIN_WRITER`, `Domains: <domains>` (e.g. `Domains: 4DT, RRT`); **empty (no tooltip)** for `ICDM` and `INTEGRATOR`.
+- Disconnected state shows the "Connect" button (existing pattern).
+- (Domain keys vs. labels in the tooltip resolves against whatever the client already has loaded — labels if the domain list is already client-side, keys otherwise.)
+
+**403 handling** (the safety net, needed regardless of P2):
+- `api-client.js request()` is the single fetch chokepoint; it already builds `error.status`/`error.code` and throws. Route `403` through the existing `errorHandler`.
+- `error-handler.js handleApiError()` gets an explicit `403` case — title "Not Permitted", `retry: false` (today 403 falls into the `default` "Services Error" arm with `retry: true`, which is wrong for a permission denial).
+
+**Manage gate** (coarse role check — lives in P1, needs no grant set):
+- Manage is for **INTEGRATOR and iCDM** only; DOMAIN_WRITER excluded. This is a single role comparison, the same coarse tier as anonymous-vs-identified — *not* matrix mirroring.
+- **Tab:** `header.js _buildNavItems()` gains one filter clause — the Manage tab renders only when `role === INTEGRATOR || role === ICDM`.
+- **Route:** `router.js` is extended so `/manage` requires INTEGRATOR/ICDM (option b — chosen so the route and the tab tell the same story; a DOMAIN_WRITER deep-linking `/manage` redirects to `/`). The route table currently carries only a `protected` boolean; add an optional allowed-roles dimension checked in `_handleRoute` alongside `protected`.
+- Note: the tab/route gate is a courtesy. The server still gates each underlying write by its own `permissions.yaml` entry, so an iCDM user inside Manage will still get `403` on integrator-only actions — covered by the 403 toast.
+
+#### Priority 2 — preemptive control enablement
+
+Goal: controls a role cannot use are **disabled or not rendered**, rather than clickable-then-403. Built on a server-provided grant set, with no permission matrix on the client.
+
+**Principle (settled through discussion):** every UI action ultimately fires API calls whose `method`+`path` are known. An action is bound to a **set** of request-type patterns; the action is **enabled iff *all* its request patterns are authorised** (single-call actions are the all-of-one case). The client does **not** receive or evaluate the matrix — it receives the *verdicts*.
+
+**Server "checked access" API** (new endpoint): returns, for the authenticated caller, the set of **permitted request-type patterns** `{ method, path-pattern }` (the `:param` forms, e.g. `PUT /operational-changes/:id`), computed server-side via the same `isPermitted` used for enforcement. The matrix never crosses the wire.
+
+**Client consumption (designed to avoid scattered/complex coding):**
+- **Action registry** — a single module mapping `actionId → [request-type patterns]`. The action↔request binding lives here, in one place, not on the controls.
+- **`app.can(actionId)`** — fetches/caches the grant set at identify time; `can(actionId)` returns `true` iff *every* pattern the action declares is present in the cached grant set. Because actions declare **patterns** (not concrete paths) and the server returns **patterns**, enablement is a pure set-membership lookup — **no path matching on the client**.
+- **Controls declare one `actionId`** (a single attribute, not a permission rule) and a render-time wrapper applies `disabled`/hidden from `can(actionId)`. Tabs are config-driven, so a tab entry can carry an optional `actionId` the tab-strip honours.
+- **Coverage is incremental:** only controls you choose to tag are gated; untagged controls stay enabled and fall through to the P1 403 toast (which fails closed at the server). Seed coverage with the high-value integrator-only controls; extend as needed.
+- `app.js` is the home for the grant-set cache and `can()` (it already owns `user` and the `apiClient` singleton wiring).
 
 ### 4.4 Admin config reload endpoint
 
@@ -420,7 +459,7 @@ odip-admin config-reload [--users] [--permissions]
 **`odip-admin` implementation notes (for the implementation session):**
 
 - `deploy_config_files()` — update to copy four YAML files: `domains.yaml`, `edition.yaml`, `users.yaml`, `permissions.yaml`; remove `domains.json` and `edition.json` references
-- `list_works_dirs()` — update to read `edition.yaml` instead of `edition.json`; replace `JSON.parse` with `require('${ODIP_REPO}/node_modules/js-yaml').load` (available post `npm install`); update comment accordingly
+- `list_works_dirs()` — update to read `edition.yaml` instead of `edition.json`. **Must stay dependency-free:** this runs during `install` *before* `npm install`, so `js-yaml` is not yet available. Use a `node -e` line scan (built-in `fs` only) extracting the `domain:` lines from the machine-generated `edition.yaml` — verified to produce the same slugs as the server's `getDomainChapterSlugs()`. (Do **not** use `require('js-yaml')` here — that was the original sketch but fails on a fresh pre-install tree.)
 - Add `config-reload` to `usage()`, `cmd_config_reload()` function, and dispatch `case`
 
 ---
@@ -453,3 +492,15 @@ Replaces `resolveUser()` middleware entirely. The rest of the stack — `permiss
 | 2 | P1 configurable matrix | Dropped — transitory constraint makes the investment unjustified |
 | 3 | `MANAGE_SETUP` role grants | Operational concern — exact grants defined in `permissions.yaml` by integrators/iCDM |
 | 4 | Config reload without restart | Admin reload endpoint added — `POST /admin/config/reload` (§4.4) |
+| 5 | Client-side email validation | None — no half-measure is worth it; server is sole authority (§4.3 P1) |
+| 6 | localStorage: keep, and legacy migration | Keep as convenience cache (server re-validates every request); **no migration** — re-validate stored email via `/auth/identify`, discard legacy `{name,role}` (§4.3 P1) |
+| 7 | Role labels / domain tooltip | Hardcoded labels (`Domain Writer` / `iCDM` / `Integrator`); tooltip `Domains: <domains>` for DOMAIN_WRITER, **empty** for iCDM/INTEGRATOR (§4.3 P1) |
+| 8 | Manage visibility | INTEGRATOR + iCDM only; DOMAIN_WRITER excluded. Coarse role check on both tab and route (option b) — not matrix mirroring (§4.3 P1) |
+| 9 | Preemptive control: how | Server exposes **permitted request-type patterns** (not the matrix); client binds `actionId → [patterns]` in a single registry; `can(actionId)` = all patterns present in cached grant set; pure set lookup, no client-side path matching (§4.3 P2) |
+| 10 | Preemptive control: enablement rule | An action is enabled iff **all** its request-type patterns are authorised (§4.3 P2) |
+| 11 | Build priority | P1 (identity + 403 + Manage gate) is shippable standalone; P2 (grant-set preemptive control) is additive and reworks nothing in P1 (§4.3) |
+| 12 | `/auth/identify` 401 surfacing | Handled **inline** in the Connect dialog, bypassing the global error toast; all other calls keep centralized handling (§4.3 P1) |
+
+### Implementation status (as of this revision)
+
+Built and documented in the corresponding ADD chapters: §3 config files, §3.5/§3.6 `config.js`/`loader.js` additions, §4.1 server middleware + route enforcement (ch04), §4.2 `/auth/identify` and §4.4 `/admin/config/reload` (ch04), CLI changes (ch07), `odip-admin` changes (ch09). **Remaining: §4.3 web client (P1 then P2)** — to be implemented in a fresh session using this note.

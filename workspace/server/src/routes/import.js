@@ -1,21 +1,9 @@
 import { Router } from 'express';
 import ImportService from '../services/ImportService.js';
+import { getUser } from './request-user.js';
 
 const router = Router();
 const importService = new ImportService();
-
-/**
- * Extract the acting user from request headers — throws if id absent.
- * Returns { id, role }; role is null when x-user-role is absent
- * (role validation / implicit population arrives with RBA).
- */
-function getUser(req) {
-    const id = req.headers['x-user-id'];
-    if (!id) {
-        throw new Error('Missing required header: x-user-id');
-    }
-    return { id, role: req.headers['x-user-role'] || null };
-}
 
 // Import distributed edition source JSON file directly
 router.post('/distributed', async (req, res) => {

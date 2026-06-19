@@ -8,7 +8,7 @@
  * @typedef {Object} Route
  * @property {string}   prefix      - URL prefix matched against window.location.pathname
  * @property {string}   activityKey - Logical key passed to onNavigate (maps to activity loader)
- * @property {boolean}  protected   - If true, redirect to '/' when no user is set
+ * @property {string[]|undefined} allowedRoles - If set, redirect to '/' unless user role is in this list
  *
  * Routes are matched in declaration order — more specific prefixes must come first.
  */
@@ -17,7 +17,7 @@
 const ROUTES = [
     { prefix: '/elaborate', activityKey: 'elaborate', protected: true  },
     { prefix: '/explore',   activityKey: 'explore',   protected: false },
-    { prefix: '/manage',    activityKey: 'manage',    protected: true  },
+    { prefix: '/manage',    activityKey: 'manage',    protected: true,  allowedRoles: ['INTEGRATOR', 'ICDM'] },
     { prefix: '/converse', activityKey: 'converse', protected: false },
     { prefix: '/',          activityKey: 'home',      protected: false },
 ];
@@ -87,6 +87,11 @@ export class Router {
         }
 
         if (route.protected && !this._getUser()) {
+            this.navigate('/');
+            return;
+        }
+
+        if (route.allowedRoles && !route.allowedRoles.includes(this._getUser()?.role)) {
             this.navigate('/');
             return;
         }

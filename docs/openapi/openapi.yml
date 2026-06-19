@@ -19,6 +19,10 @@ components:
 
 # Combine all paths from separate files
 paths:
+  # Auth surface (interim RBA) — no identity required
+  /auth/identify:
+    $ref: 'openapi-auth.yml#/paths/~1auth~1identify'
+
   # Setup entity endpoints
   /stakeholder-categories:
     $ref: 'openapi-setup.yml#/paths/~1stakeholder-categories'
@@ -121,6 +125,8 @@ paths:
 
 
 tags:
+  - name: Auth
+    description: Identity and access surface (interim RBA) — email identification and access inspection
   - name: Stakeholder Categories
     description: Stakeholder category management
   - name: Reference Documents

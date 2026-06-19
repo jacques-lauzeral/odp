@@ -47,7 +47,7 @@ const router = operationalChangeRouter.getRouter();
 // GET /operational-changes/:id/milestones
 router.get('/:id/milestones', async (req, res) => {
     try {
-        const user = operationalChangeRouter.getUser(req);
+        const user = operationalChangeRouter.getUserOptional(req);
         const editionId = operationalChangeRouter.getEditionId(req);
         console.log(`OperationalChangeService.getMilestones() itemId: ${req.params.id}, user: ${user?.id ?? null}, editionId: ${editionId}`);
         const milestones = await OperationalChangeService.getMilestones(req.params.id, user, editionId);
@@ -71,7 +71,7 @@ router.get('/:id/milestones', async (req, res) => {
 // GET /operational-changes/:id/milestones/:milestoneKey
 router.get('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
-        const user = operationalChangeRouter.getUser(req);
+        const user = operationalChangeRouter.getUserOptional(req);
         const editionId = operationalChangeRouter.getEditionId(req);
         console.log(`OperationalChangeService.getMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, user: ${user?.id ?? null}, editionId: ${editionId}`);
         const milestone = await OperationalChangeService.getMilestone(req.params.id, req.params.milestoneKey, user, editionId);

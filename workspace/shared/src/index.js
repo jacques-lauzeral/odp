@@ -35,3 +35,6 @@ export * from './config/config.js';
 
 // Export audit elements
 export * from './model/audit-elements.js';
+
+// Export user roles
+export * from './model/user-roles.js';

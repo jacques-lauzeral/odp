@@ -27,11 +27,11 @@ import { UserRole } from '/shared/src/index.js';
 
 const STORAGE_KEY = 'odip-space-user';
 
-const ROLES = [
-    { value: UserRole.DOMAIN_WRITER, label: 'Domain writer' },
-    { value: UserRole.ICDM,          label: 'iCDM'          },
-    { value: UserRole.INTEGRATOR,    label: 'Integrator'    },
-];
+const ROLE_LABELS = {
+    [UserRole.DOMAIN_WRITER]: 'Domain Writer',
+    [UserRole.ICDM]:          'iCDM',
+    [UserRole.INTEGRATOR]:    'Integrator',
+};
 
 /** @type {Array<{ segment: string, label: string, path: string }>} */
 const NAV_TABS = [
@@ -79,8 +79,10 @@ export default class Header {
                         </nav>
                         <div class="odp-header__right">
                             ${this._buildChangeSetChip()}
-                            <button class="odp-header__user-btn${user ? ' odp-header__user-btn--identified' : ''}" id="header-user-btn">
-                                ${user ? this._esc(user.name) : 'Connect'}
+                            <button class="odp-header__user-btn${user ? ' odp-header__user-btn--identified' : ''}"
+                                id="header-user-btn"
+                                ${user?.role === UserRole.DOMAIN_WRITER && user.domains?.length ? `title="Domains: ${this._esc(user.domains.join(', '))}"` : ''}>
+                                ${user ? `${this._esc(user.email)} — ${this._esc(ROLE_LABELS[user.role] ?? user.role)}` : 'Connect'}
                             </button>
                             <div class="odp-header__status" title="Server connection">
                                 <span class="status-dot status-dot--checking"></span>
@@ -98,14 +100,10 @@ export default class Header {
                         <button class="odp-connect-popup__close" id="connect-close" aria-label="Close">&times;</button>
                     </div>
                     <div class="odp-connect-popup__body">
-                        <label class="odp-connect-popup__label" for="connect-name">Name</label>
-                        <input class="odp-connect-popup__input" id="connect-name" type="text"
-                            placeholder="Your name" value="${user?.name ?? ''}" autocomplete="off">
-                        <label class="odp-connect-popup__label" for="connect-role">Role</label>
-                        <select class="odp-connect-popup__select" id="connect-role">
-                            <option value="">— select role —</option>
-                            ${ROLES.map(r => `<option value="${r.value}"${user?.role === r.value ? ' selected' : ''}>${r.label}</option>`).join('')}
-                        </select>
+                        <label class="odp-connect-popup__label" for="connect-email">Email address</label>
+                        <input class="odp-connect-popup__input" id="connect-email" type="text"
+                            placeholder="your.name@eurocontrol.int" value="${user?.email ?? ''}" autocomplete="off">
+                        <p class="odp-connect-popup__error" id="connect-error" hidden></p>
                     </div>
                     <div class="odp-connect-popup__footer">
                         ${user ? `<button class="btn btn-secondary" id="connect-disconnect">Disconnect</button>` : ''}
@@ -128,6 +126,7 @@ export default class Header {
             .filter(tab => {
                 if (tab.segment === 'elaborate') return ctx?.type === 'live';
                 if (tab.segment === 'explore')   return ctx?.type === 'edition';
+                if (tab.segment === 'manage')    return user?.role === UserRole.INTEGRATOR || user?.role === UserRole.ICDM;
                 return true;
             })
             .map(tab => `
@@ -195,7 +194,7 @@ export default class Header {
         dom.find('#connect-disconnect', this.container)
             ?.addEventListener('click', () => this._handleDisconnect());
 
-        dom.find('#connect-name', this.container)
+        dom.find('#connect-email', this.container)
             ?.addEventListener('keydown', (e) => { if (e.key === 'Enter') this._handleConnect(); });
 
         document.addEventListener('keydown', (e) => {
@@ -224,14 +223,29 @@ export default class Header {
     // Connect / disconnect
     // -------------------------------------------------------------------------
 
-    _handleConnect() {
-        const name = dom.find('#connect-name', this.container)?.value.trim();
-        const role = dom.find('#connect-role', this.container)?.value;
-        if (!name || !role) return;
-        const userData = { name, role };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-        this.app.setUser(userData);
-        this._closePopup();
+    async _handleConnect() {
+        const emailInput = dom.find('#connect-email', this.container);
+        const errorEl    = dom.find('#connect-error', this.container);
+        const email = emailInput?.value.trim();
+        if (!email) return;
+
+        // Clear previous inline error
+        if (errorEl) { errorEl.textContent = ''; errorEl.hidden = true; }
+
+        try {
+            const userData = await this.app.apiClient.post('/auth/identify', { email });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+            this.app.setUser(userData);
+            this._closePopup();
+        } catch (error) {
+            if (error.status === 401) {
+                // Inline error — do NOT let this reach the global toast
+                if (errorEl) { errorEl.textContent = 'Email address not recognised.'; errorEl.hidden = false; }
+            } else {
+                this._closePopup();
+                throw error; // bubble to global error handler
+            }
+        }
     }
 
     _handleDisconnect() {
@@ -240,29 +254,22 @@ export default class Header {
         this._closePopup();
     }
 
-    restoreUser() {
-        // Legacy role migration: old sessions used lowercase client-side role names
-        // that predate the server UserRole enum. Remap on restore so existing
-        // connected users don't need to reconnect manually.
-        const LEGACY_ROLE_MAP = {
-            contributor: UserRole.DOMAIN_WRITER,
-            reviewer:    UserRole.ICDM,
-            integrator:  UserRole.INTEGRATOR,
-        };
-
+    async restoreUser() {
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                const userData = JSON.parse(stored);
-                if (userData?.name && userData?.role) {
-                    if (LEGACY_ROLE_MAP[userData.role]) {
-                        userData.role = LEGACY_ROLE_MAP[userData.role];
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-                    }
-                    this.app.setUser(userData);
-                }
+            if (!stored) return;
+            const parsed = JSON.parse(stored);
+            // Discard legacy shape (pre-RBA: { name, role } with no email)
+            if (!parsed?.email) {
+                localStorage.removeItem(STORAGE_KEY);
+                return;
             }
-        } catch {
+            // Re-validate against server — catches users removed from users.yaml
+            const userData = await this.app.apiClient.post('/auth/identify', { email: parsed.email });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+            this.app.setUser(userData);
+        } catch (error) {
+            // 401 → removed from whitelist; any other error → fail silently, stay anonymous
             localStorage.removeItem(STORAGE_KEY);
         }
     }

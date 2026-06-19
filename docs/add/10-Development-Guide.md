@@ -147,7 +147,8 @@ The API specification is split across modular files:
 
 | File | Coverage |
 |---|---|
-| `openapi-base.yml` | Shared schemas and security components |
+| `openapi-base.yml` | Shared schemas and the `UserContext` (`X-User-ID`) security scheme |
+| `openapi-auth.yml` | Auth surface — `POST /auth/identify` (email → role + domains) |
 | `openapi-setup.yml` | Setup entity endpoints |
 | `openapi-operational.yml` | OR / OC endpoints |
 | `openapi-operational-milestones.yml` | Milestone sub-resource |

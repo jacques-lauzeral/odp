@@ -1,0 +1,84 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Auth
+  description: |
+    Identity and access surface (interim RBA). The /auth endpoints are the only
+    client-facing view of users.yaml / permissions.yaml. They are mounted above
+    the RBA middleware and require no identity themselves — a client uses them to
+    establish and inspect its own access before it has anything to present.
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
+paths:
+  /auth/identify:
+    post:
+      summary: Validate an email and return its role and domain scope
+      tags: [Auth]
+      description: |
+        Looks up the supplied email in the interim user whitelist (users.yaml)
+        and returns the associated role and domain scope. This is how a client
+        establishes identity before sending x-user-id on subsequent requests.
+
+        Carries no authentication: the client has no identity to present yet.
+        Role and domains are server-derived and never client-declared.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  description: The user's email address (validated against users.yaml).
+                  example: jane.doe@eurocontrol.int
+      responses:
+        '200':
+          description: Email recognised — identity resolved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identity'
+        '400':
+          description: Bad request — missing or malformed email field.
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '401':
+          description: |
+            Email address not recognised (UNKNOWN_USER). The error code is
+            UNKNOWN_USER; clients surface this inline on the connect dialog.
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+components:
+  schemas:
+    Identity:
+      type: object
+      description: Resolved identity for a whitelisted user.
+      required: [email, role, domains]
+      properties:
+        email:
+          type: string
+          description: The canonical email as stored in the whitelist.
+          example: jane.doe@eurocontrol.int
+        role:
+          type: string
+          description: Server-derived role.
+          enum: [DOMAIN_WRITER, ICDM, INTEGRATOR]
+          example: DOMAIN_WRITER
+        domains:
+          type: array
+          description: |
+            Domain scope for the role. Populated for DOMAIN_WRITER (the domains
+            the user may write); empty for ICDM and INTEGRATOR (cross-domain).
+          items:
+            type: string
+          example: ["4DT", "RRT"]

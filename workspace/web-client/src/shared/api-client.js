@@ -19,12 +19,8 @@ export class ApiClient {
             ...additionalHeaders
         };
 
-        if (this.app?.user?.name) {
-            headers['x-user-id'] = this.app.user.name;
-        }
-
-        if (this.app?.user?.role) {
-            headers['x-user-role'] = this.app.user.role;
+        if (this.app?.user?.email) {
+            headers['x-user-id'] = this.app.user.email;
         }
 
         return headers;

@@ -1,0 +1,91 @@
+# ODIP action-permission matrix (RBA / APP-RBA-02, P0 hard-coded).
+#
+# Maintained by integrators via odip-admin — deployed with the config files and
+# reloaded live with `odip-admin config-reload --permissions` (no restart).
+#
+# Model:
+#   - Each entry grants a (method × path-pattern) to a set of UserRole keys.
+#   - Path patterns use Express :param syntax; matching is exact-segment.
+#   - DENY BY DEFAULT for any listed route: a request whose role is not in the
+#     matched entry's roles is rejected (403).
+#   - UNLISTED ROUTES ARE OPEN (anonymous): reads (GET) for Explore/Home/History
+#     are intentionally absent here and require no identification. Quality is the
+#     exception — listed (identification required) because it triggers compute.
+#   - /auth/identify and /ping carry NO auth middleware at all and are therefore
+#     deliberately NOT listed — they are reachable before a role exists.
+#   - /admin/* is a NON-MATRIX surface: the admin interface is mounted above the
+#     RBA middleware and governed as a whole by network isolation (and, later,
+#     by odip-admin identity), not by per-route entries here. Do not add /admin
+#     routes to this matrix — gate the whole surface at the pipeline instead.
+#
+# Verb conventions:
+#   POST   /<resource>               create
+#   PUT    /<resource>/:id           update
+#   POST   /<resource>/:id/<action>  execute an action — e.g.
+#                                      /delete  -> soft delete (to recycle bin)
+#                                      /restore -> undo a soft delete
+#   DELETE /<resource>/:id           hard (permanent) delete; subject to a
+#                                    referential-integrity check at the store
+#                                    layer. O*/edition hard-delete is commented
+#                                    out below for now; setup-entity delete is live.
+#
+# Roles: DOMAIN_WRITER | ICDM | INTEGRATOR
+
+permissions:
+
+  # operational-requirements
+  - { method: POST,   path: /operational-requirements,             roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: PUT,    path: /operational-requirements/:id,         roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: POST,   path: /operational-requirements/:id/delete,  roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: POST,   path: /operational-requirements/:id/restore, roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  # - { method: DELETE, path: /operational-requirements/:id,       roles: [INTEGRATOR] }
+
+  # operational-changes
+  - { method: POST,   path: /operational-changes,                  roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: PUT,    path: /operational-changes/:id,              roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: POST,   path: /operational-changes/:id/delete,       roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: POST,   path: /operational-changes/:id/restore,      roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  # milestone edits are part of editing the change — same gate as OC writes
+  - { method: POST,   path: /operational-changes/:id/milestones,                roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: PUT,    path: /operational-changes/:id/milestones/:milestoneKey,  roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: DELETE, path: /operational-changes/:id/milestones/:milestoneKey,  roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  # - { method: DELETE, path: /operational-changes/:id,            roles: [INTEGRATOR] }
+
+  # chapters
+  - { method: PUT,    path: /chapters/:id,                         roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+
+  # change-sets
+  - { method: POST,   path: /change-sets,                          roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: PUT,    path: /change-sets/:id,                      roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: POST,   path: /change-sets/:id/close,                roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+  - { method: POST,   path: /change-sets/:id/reopen,               roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+
+  # quality — read-only, but runs the rule engine on every call; identification
+  # required (all roles) to keep anonymous callers from triggering the compute.
+  - { method: GET,    path: /quality/checks,                       roles: [DOMAIN_WRITER, ICDM, INTEGRATOR] }
+
+  # stakeholder-categories
+  - { method: POST,   path: /stakeholder-categories,               roles: [INTEGRATOR] }
+  - { method: PUT,    path: /stakeholder-categories/:id,           roles: [INTEGRATOR] }
+  - { method: DELETE, path: /stakeholder-categories/:id,           roles: [INTEGRATOR] }
+
+  # reference-documents
+  - { method: POST,   path: /reference-documents,                  roles: [INTEGRATOR] }
+  - { method: PUT,    path: /reference-documents/:id,              roles: [INTEGRATOR] }
+  - { method: DELETE, path: /reference-documents/:id,              roles: [INTEGRATOR] }
+
+  # odp-editions
+  - { method: POST,   path: /odp-editions,                         roles: [INTEGRATOR] }
+  # for consistency, /publish should be renamed /export
+  - { method: POST,   path: /odp-editions/:id/publish,             roles: [INTEGRATOR] }
+  # - { method: DELETE, path: /odp-editions/:id,                   roles: [INTEGRATOR] }
+
+  # import
+  - { method: POST,   path: /import/distributed,                   roles: [INTEGRATOR] }
+
+  # admin — see header note: /admin/* is a non-matrix surface
+
+  # Not wired yet — uncomment when the routes go live:
+  #   bandwidths, waves, baselines (setup/edition writes — INTEGRATOR)
+  #   /operational-*/:id/release, /decommission (parked — INTEGRATOR)
+  #   /publications/{antora,pdf,docx} (INTEGRATOR)

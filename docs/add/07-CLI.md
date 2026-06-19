@@ -8,7 +8,7 @@ The ODIP CLI is a Node.js command-line tool built with Commander.js. It is a pur
 CLI Command → node-fetch → REST API → Service Layer → Store → Neo4j
 ```
 
-**Entry point**: `cli/src/index.js` — loads domain and edition config from `$ODIP_HOME/config/` at startup via `loadConfig()` before command execution  
+**Entry point**: `cli/src/index.js` — reads the server URL from a local `config.json`; registers the global `--user <email>` option and all entity commands. The CLI does not call `loadConfig()` — it holds no domain/edition config of its own.
 **Base utilities**: `cli/src/base-commands.js` — shared HTTP helpers, output formatting, error handling, and user identity management  
 **Commands**: one file per entity in `cli/src/commands/`
 
@@ -22,14 +22,13 @@ Every command constructs an HTTP request to the configured API server using `nod
 
 ### 2.2 User Identity
 
-The `odip-cli` launcher script injects two global options before passing arguments to Node:
+The `odip-cli` launcher script injects one global option before passing arguments to Node:
 
 | Option | Default | Header sent |
 |---|---|---|
-| `--user <userId>` | `$USER` (OS user) | `x-user-id` |
-| `--role <role>` | `INTEGRATOR` | `x-user-role` |
+| `--user <email>` | `$USER` (OS user) | `x-user-id` |
 
-Both are available on every command. `createHeaders()` in `base-commands.js` sends both headers on every request; the server assembles `user {id, role}` from them and threads the pair into the transaction. The role is frozen onto every `AuditEvent` at write time (Phase A audit foundation). RBA enforcement is deferred to a later phase — at P0 the headers are always trusted.
+`--user` carries the user's **email**. `createHeaders()` in `base-commands.js` sends it as the sole identity header, `x-user-id`; the server's `resolveUser()` middleware validates the email against `users.yaml` and derives the role — the CLI never declares a role. The former `--role` option and `x-user-role` header are removed (role is server-derived since RBA). An email not in `users.yaml` is rejected by the server with `401 UNKNOWN_USER`; a write the role is not permitted to perform returns `403 FORBIDDEN`. The `$USER` fallback is a convenience only — it is rejected unless it happens to be a whitelisted email.
 
 ### 2.3 Output Formatting
 
@@ -309,7 +308,7 @@ The following command files or subcommands were removed:
 
 **Lifecycle face and display.** Both `list` and `show` accept `--lifecycle-face active|released|decommissioned|deleted` (default `active`), validated and checked for exclusivity with `--edition` / `--baseline` via `resolveLifecycleFace`, forwarded as `?lifecycleFace=` only when non-default. On `show` it selects the single-item read face — the only way to inspect a soft-deleted item by ID (`--lifecycle-face deleted`). The list table carries a `Lifecycle` column and `show` (via the base `displayItemDetails`) prints a `Lifecycle:` line — both rendered by `formatLifecycleStatus`, which lists the item's true lifecycle flags. The flag is named `--lifecycle-face` (not `--lifecycle-status`) to match the `lifecycleFace` parameter used at every other layer and to avoid colliding with the unrelated `lifecycleStatus` flag structure (the four-flag read shape). `chapter.js` has its own list/show/`displayItemDetails` and exposes no face (chapters have no lifecycle).
 
-`getUserRole()` mirrors `getUserId()` — both read from the global `program.opts()` set by the `odip-cli` script. `createHeaders()` sends `x-user-role` alongside `x-user-id` on every request.
+`getUserId()` reads `--user` from the global `program.opts()` set by the `odip-cli` script; `createHeaders()` sends it as `x-user-id` (the only identity header — role is server-derived).
 
 `addListCommand` and `addShowCommand` in `VersionedCommands` both support `--projection`. The projection value is validated before the request is issued; an invalid value exits with a non-zero code. The projection is appended as a query parameter only when non-default. List tables show identity/classification columns only — rich-text fields are surfaced in `show` / `show-version`, not in the list.
 

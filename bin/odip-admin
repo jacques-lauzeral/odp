@@ -39,6 +39,7 @@ Commands:
   reset     Reset Neo4j database (with server standby)
   standby   Signal server to enter standby mode
   resume    Signal server to resume normal operation
+  config-reload   Live-reload users.yaml / permissions.yaml (no restart)
   dumps     List available backup slots
 
 Run 'odip-admin <command> -h' for command-specific options.
@@ -52,27 +53,31 @@ log() {
 }
 
 # List all publication works directories.
-# Per-domain works dirs are derived from edition.json domain chapter keys.
+# Per-domain works dirs are derived from edition.yaml domain chapter keys.
 #
-# NOTE: jq and python3 are not reliably available in the target environment.
-# We use `node -e` instead, which is guaranteed present (ODIP requires Node.js).
-# The inline script flattens top-level and sub-chapters, filters those with a
-# "domain" key, then lowercases and replaces underscores with hyphens to form
-# directory-safe slugs matching the server's getDomainChapterSlugs() logic.
+# NOTE: jq and python3 are not reliably available in the target environment,
+# and this runs during install BEFORE `npm install` — so js-yaml is not yet
+# available either. We use a dependency-free `node -e` line scan (built-in fs
+# only): edition.yaml is machine-generated, so each domain chapter carries a
+# plain `domain: KEY` line. We extract those, lowercase, and replace
+# underscores with hyphens to form directory-safe slugs matching the server's
+# getDomainChapterSlugs() logic.
 list_works_dirs() {
     echo "${ODIP_HOME}/publication/works"
     echo "${ODIP_HOME}/publication/works-intro"
-    local edition_json="${ODIP_REPO}/workspace/server/config/edition.json"
-    if [[ -f "$edition_json" ]]; then
+    local edition_yaml="${ODIP_REPO}/workspace/server/config/edition.yaml"
+    if [[ -f "$edition_yaml" ]]; then
         node -e "
-const e = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
-const all = e.chapters.flatMap(c => [c, ...(c.subChapters || [])]);
-all.filter(c => c.domain)
-   .map(c => c.domain.toLowerCase().replace(/_/g, '-'))
-   .forEach(slug => process.stdout.write('${ODIP_HOME}/publication/works-' + slug + '\n'));
-" "$edition_json"
+const txt = require('fs').readFileSync(process.argv[1], 'utf8');
+const slugs = [];
+for (const line of txt.split('\n')) {
+    const m = line.match(/^\s*domain:\s*([A-Za-z0-9_]+)\s*\$/);
+    if (m) slugs.push(m[1].toLowerCase().replace(/_/g, '-'));
+}
+[...new Set(slugs)].forEach(s => process.stdout.write('${ODIP_HOME}/publication/works-' + s + '\n'));
+" "$edition_yaml"
     else
-        echo "Warning: edition.json not found — per-domain works dirs will not be created" >&2
+        echo "Warning: edition.yaml not found — per-domain works dirs will not be created" >&2
     fi
 }
 
@@ -96,12 +101,19 @@ deploy_config_files() {
     local config_src="${ODIP_REPO}/workspace/server/config"
     local config_dst="${ODIP_HOME}/config"
     mkdir -p "$config_dst"
-    for f in domains.json edition.json; do
+    for f in domains.yaml edition.yaml users.yaml permissions.yaml; do
         if [[ -f "${config_src}/${f}" ]]; then
             cp "${config_src}/${f}" "${config_dst}/${f}"
             log "Deployed config: ${config_dst}/${f}"
         else
             log "Warning: config file not found — skipping: ${config_src}/${f}"
+        fi
+    done
+    # Remove superseded JSON config (the loader now reads YAML only).
+    for f in domains.json edition.json; do
+        if [[ -f "${config_dst}/${f}" ]]; then
+            rm -f "${config_dst}/${f}"
+            log "Removed superseded config: ${config_dst}/${f}"
         fi
     done
 }
@@ -616,6 +628,51 @@ EOF
     signal_resume
 }
 
+cmd_config_reload() {
+    local do_users=false
+    local do_permissions=false
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --users)       do_users=true; shift ;;
+            --permissions) do_permissions=true; shift ;;
+            -h|--help)
+                cat << 'EOF'
+Usage: odip-admin config-reload [--users] [--permissions]
+
+  Live-reload the runtime-reloadable server configs without a restart.
+  With no flags, reloads both users and permissions.
+
+    --users         Reload users.yaml only
+    --permissions   Reload permissions.yaml only
+
+  domains.yaml and edition.yaml are structural and require a restart;
+  they cannot be reloaded with this command.
+EOF
+                exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+
+    # No flags → reload both.
+    if [[ "$do_users" == false && "$do_permissions" == false ]]; then
+        do_users=true
+        do_permissions=true
+    fi
+
+    local configs=""
+    [[ "$do_users" == true ]]       && configs="users"
+    [[ "$do_permissions" == true ]] && configs="${configs:+$configs,}permissions"
+
+    log "Reloading config: ${configs}"
+    if curl -sf -X POST "${SERVER_URL}/admin/config/reload?configs=${configs}"; then
+        echo
+        log "Config reloaded: ${configs}"
+    else
+        echo "Error: config reload failed (server kept the previous config)" >&2
+        exit 1
+    fi
+}
+
 format_age() {
     local age_sec="$1"
     if (( age_sec < 3600 )); then
@@ -708,6 +765,7 @@ case "$COMMAND" in
     reset)     cmd_reset "$@" ;;
     standby)   cmd_standby "$@" ;;
     resume)    cmd_resume "$@" ;;
+    config-reload) cmd_config_reload "$@" ;;
     dumps)     cmd_dumps "$@" ;;
     -h|--help) usage ;;
     *) echo "Unknown command: $COMMAND"; usage; exit 1 ;;

@@ -10,6 +10,19 @@ The ODIP REST API is an Express.js application following a manual routes pattern
 
 Two reusable base routers cover all entity types, plus hand-written routers for the management entities, quality, change sets, and the audit log.
 
+### 2.0 Access control (RBA)
+
+Two app-level middlewares run early in the pipeline, before any route, and decide identity and authorisation uniformly:
+
+- **`resolveUser()`** — the single SSO seam. Reads the `x-user-id` header (the email the client declares), validates it against `users.yaml`, and attaches `req.user = { id: email, role, domains }`. Absent header → `req.user = null` (anonymous, allowed on open routes). Present but not in the whitelist → `401 UNKNOWN_USER`. Role is **server-derived here and never trusted from the client** — the former `x-user-role` header is gone.
+- **`requirePermission()`** — consults the `permissions.yaml` matrix. If no entry matches the request's method + path, the route is **open** and passes through (anonymous reads for Explore/Home/History). If an entry matches: anonymous → `401 UNKNOWN_USER`; identified but role not permitted → `403 FORBIDDEN`; permitted → pass.
+
+Route handlers therefore no longer read headers directly. Both base routers and every hand-written router obtain the actor through the shared `getUser(req)` / `getUserOptional(req)` helpers (`routes/request-user.js`), which simply return `req.user` (throw / null respectively). `getUser` is used on writes (and on `GET /quality/checks`, which requires identification); `getUserOptional` on anonymous-capable reads. The model is **writes-and-restricted gated, reads open** — a read carries a matrix entry only where identification is required for a non-confidentiality reason (quality, which triggers compute).
+
+The `/admin/*` surface is mounted **above** these middlewares and is therefore not matrix-governed; it is gated as a whole at the pipeline (network isolation at P0). `/auth/identify` and `/ping` carry no auth middleware at all — they must be reachable before a role exists.
+
+When platform SSO arrives (P2), only `resolveUser()` is replaced; the matrix, the helpers, and every route are unchanged.
+
 ### 2.1 SimpleItemRouter
 
 Used by all setup entity routes (`stakeholder-category.js`, `reference-document.js`, `bandwidth.js`, `wave.js`). Wires standard CRUD to the corresponding `SimpleItemService` / `TreeItemService` methods:
@@ -96,7 +109,7 @@ All GET routes allow anonymous access (`getUserOptional`). PUT, PATCH, and POST 
 GET /quality/checks[?domain=<keys>][&edition=<id>]  → qualityService.runChecks(domains, editionId, user)
 ```
 
-`domain` is an optional comma-separated list of domain keys validated against `domains.json` before the service call. `edition` is an optional edition ID — when present the route passes it directly to `QualityService`, which resolves it to `{baselineId, editionId}` internally via `odpEditionStore().resolveContext()`. When absent, checks run against the live dataset (latest versions).
+`domain` is an optional comma-separated list of domain keys validated against `domains.yaml` before the service call. `edition` is an optional edition ID — when present the route passes it directly to `QualityService`, which resolves it to `{baselineId, editionId}` internally via `odpEditionStore().resolveContext()`. When absent, checks run against the live dataset (latest versions).
 
 The route requires `x-user-id` — quality checks are not available to anonymous users.
 
@@ -138,6 +151,19 @@ This one resource serves every audit consumer:
 
 Each row is the frozen `AuditEventRow` (action, actor, role, timestamp, target snapshot, resolved `versionId`, change-set snapshot, note). GET allows anonymous access, consistent with the other read routes.
 
+### 2.9 Auth and admin-config endpoints (RBA)
+
+Two endpoints sit outside the normal entity surface, both mounted **above** the RBA middleware (§2.0) so they are not matrix-governed:
+
+```
+POST /auth/identify              → { email } ⇒ { email, role, domains } | 401 UNKNOWN_USER
+POST /admin/config/reload?configs=users,permissions   ⇒ { reloaded: [...] }
+```
+
+`POST /auth/identify` (`routes/auth.js`) is the only client-facing view of `users.yaml` and carries no auth itself — a client validates its email and learns its role here *before* it has an identity to present; the result is what it then sends as `x-user-id`. Missing email → 400; email not in the whitelist → 401 `UNKNOWN_USER`; otherwise 200 with `{ email, role, domains }`.
+
+`POST /admin/config/reload` (on `adminRouter`) live-reloads the runtime-reloadable configs (`users`, `permissions`) without a restart, backed by `reloadConfig()` in the loader. The reload is **atomic**: all requested files are read and validated into staging first, and module state is committed only if every one validates — so a validation failure leaves the previously loaded config fully active. `configs` is a required comma-separated query parameter; `domains`/`edition` are structural and rejected (400 `NOT_RELOADABLE`); a validation failure returns 500 `CONFIG_RELOAD_FAILED` (with the offending `config`) while the old config keeps serving. Being on `/admin`, it is protected by network isolation at P0, not role-gated.
+
 ---
 
 ## 3. Edition Context Resolution
@@ -154,6 +180,8 @@ Route handlers catch errors thrown by services and map them to HTTP responses:
 
 | Condition | HTTP status | Error code |
 |---|---|---|
+| Unidentified caller on a route requiring identity | 401 | `UNKNOWN_USER` |
+| Identified, but role not permitted for the route | 403 | `FORBIDDEN` |
 | Resource not found (service returns `null`) | 404 | `NOT_FOUND` |
 | Validation error (service throws) | 400 | `VALIDATION_ERROR` |
 | Version conflict (store optimistic lock) | 409 | `VERSION_CONFLICT` |
@@ -176,6 +204,8 @@ All error responses use the standard envelope:
 { "error": { "code": "ERROR_CODE", "message": "Human-readable message" } }
 ```
 
+The first two rows (`UNKNOWN_USER`, `FORBIDDEN`) are produced by the RBA middleware (§2.0) before the request reaches a route handler, not by service error mapping; they use the same envelope.
+
 ---
 
 ## 5. OpenAPI Specification
@@ -185,7 +215,8 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | File | Coverage |
 |---|---|
 | `openapi.yml` | Entry point, aggregates all modules |
-| `openapi-base.yml` | Shared schemas (models, enums, common parameters) |
+| `openapi-base.yml` | Shared schemas (models, enums, common parameters) and the `UserContext` (`X-User-ID`) security scheme |
+| `openapi-auth.yml` | Auth surface — `POST /auth/identify` (email → role + domains) and the `Identity` schema |
 | `openapi-setup.yml` | Setup entities (stakeholder categories, reference documents, bandwidths, waves) |
 | `openapi-chapter.yml` | Chapter management endpoints |
 | `openapi-operational.yml` | Operational requirements and changes |
@@ -200,6 +231,8 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | `openapi-quality.yml` | Quality check endpoints and schemas (`QualityReport`, `DomainQualityReport`, `BrokenONTraceability`, `UntraceableOR`, `OrphanON`, `NoShowOStar`) |
 
 Refer to these files for all endpoint signatures, query parameters, request/response schemas, and status code contracts.
+
+The `/admin/*` endpoints (standby, resume, status, config/reload) are deliberately **not** in the OpenAPI specification — they are operator endpoints behind network isolation, not part of the client-facing API contract.
 
 ---
 

@@ -1,30 +1,8 @@
 import { Router } from 'express';
 import BaselineService from '../services/BaselineService.js';
+import { getUser, getUserOptional } from './request-user.js';
 
 const router = Router();
-
-/**
- * Extract the acting user from request headers — throws if id absent.
- * Returns { id, role }; role is null when x-user-role is absent
- * (role validation / implicit population arrives with RBA).
- */
-function getUser(req) {
-    const id = req.headers['x-user-id'];
-    if (!id) {
-        throw new Error('Missing required header: x-user-id');
-    }
-    return { id, role: req.headers['x-user-role'] || null };
-}
-
-/**
- * Extract the acting user from request headers — returns null if id absent.
- * Used on read-only routes that allow anonymous access.
- */
-function getUserOptional(req) {
-    const id = req.headers['x-user-id'];
-    if (!id) return null;
-    return { id, role: req.headers['x-user-role'] || null };
-}
 
 // List all baselines
 router.get('/', async (req, res) => {

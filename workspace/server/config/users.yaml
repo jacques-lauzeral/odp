@@ -1,0 +1,36 @@
+# ODIP interim identity whitelist (RBA / APP-RBA-04).
+#
+# Maintained by integrators. Maps an email to a role and — for DOMAIN_WRITER —
+# a domain write scope. There is no password: identity is declared by the
+# client and validated against this list by the resolveUser() middleware.
+#
+# A server restart (or `odip-admin config-reload --users`) is required to pick
+# up changes.
+#
+# Field rules:
+#   email   — lowercase; primary key; must be unique
+#   role    — DOMAIN_WRITER | ICDM | INTEGRATOR (canonical UserRole key)
+#   domains — domain keys from domains.yaml; meaningful for DOMAIN_WRITER only;
+#             empty for ICDM and INTEGRATOR (both are cross-domain)
+#
+# Passive users (external reviewers, read-only) are NOT declared here — anonymous
+# access to Explore and Home requires no identification.
+#
+# The entries below are the current operational whitelist.
+
+users:
+  - email: jacques.lauzeral@eurocontrol.int
+    role: INTEGRATOR
+    domains: []
+
+  - email: yves.steyt@eurocontrol.int
+    role: INTEGRATOR
+    domains: []
+
+  - email: thomas.zenner@eurocontrol.int
+    role: INTEGRATOR
+    domains: []
+
+  - email: boris.radovanovic@eurocontrol.int
+    role: DOMAIN_WRITER
+    domains: [4DT, RRT]

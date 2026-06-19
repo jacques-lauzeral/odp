@@ -62,7 +62,7 @@ components:
           nullable: true
         userRole:
           type: string
-          description: "UserRole key at action time, frozen (null until RBA populates the header)"
+          description: "UserRole key at action time, frozen onto the event. Server-derived from the authenticated user (resolved from users.yaml); nullable for actions with no resolved user."
           nullable: true
         timestamp:
           type: string

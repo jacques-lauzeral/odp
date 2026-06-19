@@ -42,14 +42,6 @@ export class BaseCommands {
     }
 
     /**
-     * Get user role from global program options
-     */
-    getUserRole() {
-        const program = this.getCurrentProgram();
-        return program.opts().role;
-    }
-
-    /**
      * Get the current commander program instance
      */
     getCurrentProgram() {
@@ -58,17 +50,15 @@ export class BaseCommands {
     }
 
     /**
-     * Create headers with user context for API calls
+     * Create headers with user context for API calls.
+     * Sends only x-user-id (the user's email) — the server resolves the role
+     * from users.yaml. Role is never client-declared.
      */
     createHeaders() {
-        const userId = this.getUserId();
-        const userRole = this.getUserRole();
-        const headers = {
+        return {
             'Content-Type': 'application/json',
-            'x-user-id': userId
+            'x-user-id': this.getUserId()
         };
-        if (userRole) headers['x-user-role'] = userRole;
-        return headers;
     }
 
     /**

@@ -82,6 +82,9 @@ export class App {
         console.log('ODIP Space initialized successfully');
     }
 
+    /** @returns {import('./shared/api-client.js').ApiClient} */
+    get apiClient() { return apiClient; }
+
     // -------------------------------------------------------------------------
     // Navigation (public — used by activities and Header)
     // -------------------------------------------------------------------------
@@ -179,7 +182,7 @@ export class App {
      */
     setUser(userData) {
         this.user = userData;
-        console.log('User set:', userData?.name ?? null);
+        console.log('User set:', userData?.email ?? null);
         if (this.header) this.header.onUserChange();
         // Refresh Home if active — Live Dataset row visibility depends on user state
         if (this.currentActivity?.name === 'home') {

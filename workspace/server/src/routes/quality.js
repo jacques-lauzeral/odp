@@ -1,6 +1,7 @@
 import express from 'express';
 import qualityService from '../services/QualityService.js';
 import { isDomainValid } from '../config/loader.js';
+import { getUser } from './request-user.js';
 
 const router = express.Router();
 
@@ -13,9 +14,7 @@ const router = express.Router();
 // ---------------------------------------------------------------------------
 router.get('/checks', async (req, res) => {
     try {
-        const user = req.headers['x-user-id']
-            ? { id: req.headers['x-user-id'], role: req.headers['x-user-role'] || null }
-            : null;
+        const user = getUser(req);
 
         // Parse optional domain filter
         const domains = [];

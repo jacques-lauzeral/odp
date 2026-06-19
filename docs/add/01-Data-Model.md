@@ -41,7 +41,8 @@ shared/src/
 ├── messages/                 # API exchange contracts: request/response shapes
 │   └── messages.js           # Request/response model definitions
 └── model/                    # Domain model: entities, enums, utilities
-    ├── audit-elements.js     # AuditEvent model + AuditAction/AuditTargetType/UserRole/ItemStatus enums
+    ├── audit-elements.js     # AuditEvent model + AuditAction/AuditTargetType/ItemStatus enums
+    ├── user-roles.js         # UserRole enum (DOMAIN_WRITER, ICDM, INTEGRATOR) + validation helpers
     ├── chapter-elements.js   # Chapter entity model + OsHierarchy type
     ├── change-set-elements.js # ChangeSet model + classifier/status enums + ChangeSetCommit write fragment
     ├── drafting-groups.js    # DRG enum + validation helpers — retained for Bandwidth.scope only
@@ -60,17 +61,52 @@ shared/src/
 
 ### 2.4 Config Model
 
-Two JSON config files live in `workspace/server/config/` (source) and are deployed to `$ODIP_HOME/config/` at install time by `odip-admin`. They are loaded once at server and CLI startup via `loadConfig(configDir)` from `@odip/shared`.
+Four YAML config files live in `workspace/server/config/` (source) and are deployed to `$ODIP_HOME/config/` at install time by `odip-admin`. They are loaded once at startup via `loadConfig(configDir)` (`server/src/config/loader.js`), which reads and validates each file and exposes typed accessors. The config *structure definitions* and pure helpers (`resolveUserByEmail`, `matchesPath`, `isPermitted`, `isPermissionGoverned`, the domain/edition helpers) live in `@odp/shared` (`config/config.js`); the loader, its validators, and the stateful accessors are server-side.
 
-#### `domains.json`
+The files split by who maintains them and how often they change:
+
+| File | Maintained by | Reloadable without restart |
+|---|---|---|
+| `domains.yaml` | integrators | no — structural |
+| `edition.yaml` | integrators | no — structural |
+| `users.yaml` | integrators (via `odip-admin`) | yes — `POST /admin/config/reload` |
+| `permissions.yaml` | integrators (via `odip-admin`) | yes — `POST /admin/config/reload` |
+
+#### `domains.yaml`
 
 Defines the domain tree — the semantic classification authority for O\*s. Maximum two levels.
 
 Domain keys are stable string identifiers stored directly on `OperationalRequirementVersion.domain` and `OperationalChangeVersion.domain`, and referenced by `ChapterVersion.domain`. The `isDomainValid(key)` accessor validates domain keys at service layer.
 
-#### `edition.json`
+#### `edition.yaml`
 
 Defines the publication chapter structure. Every chapter entry is bootstrapped as a versioned `Chapter` DB entity at server startup (`initializeDatabase()` in `store/index.js`). Config-owned fields (`title`, `domain`, `position`) are never stored on version nodes — they are merged from the config at read time.
+
+#### `users.yaml`
+
+The interim identity whitelist (RBA). Maps a lowercase email to a `UserRole` and — for `DOMAIN_WRITER` — a domain write scope. There is no password: identity is declared by the client (`x-user-id` header) and validated against this list by the server's `resolveUser()` middleware, the single SSO seam. Passive (read-only) reviewers are not declared here; anonymous reads require no identification.
+
+`UsersConfig` is `{ users: UserEntry[] }`; each `UserEntry`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `email` | string | Lowercase; primary key; unique. Validated at load. |
+| `role` | string | Canonical `UserRole` key. Validated against the enum at load (fail-fast). |
+| `domains` | string[] | Domain keys from `domains.yaml`; meaningful for `DOMAIN_WRITER` only; empty for `ICDM` and `INTEGRATOR` (both cross-domain). |
+
+#### `permissions.yaml`
+
+The action-permission matrix (RBA, hard-coded at P0). An ordered list of `method × path-pattern → roles` entries; the `requirePermission()` guard consults it per request. Deny-by-default for any listed route; **unlisted routes are open** (anonymous reads for Explore/Home/History). Path patterns use Express `:param` syntax matched by `matchesPath`. The `/admin/*` surface is deliberately not in the matrix — it is governed as a whole at the pipeline, not per-route.
+
+`PermissionsConfig` is `{ permissions: PermissionEntry[] }`; each `PermissionEntry`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `method` | string | HTTP verb — `GET` \| `POST` \| `PUT` \| `DELETE` \| `PATCH`. |
+| `path` | string | Express-style path pattern (absolute, `:param` wildcards). |
+| `roles` | string[] | `UserRole` keys permitted. Validated against the enum at load. |
+
+Two helpers back enforcement: `isPermissionGoverned(method, path)` reports whether any entry matches (i.e. whether the route is gated at all — letting `requirePermission` leave unlisted routes open), and `isPermitted(method, path, role)` reports whether the role is granted (deny-by-default; grants union across entries matching the same method + path, so evaluation is order-independent).
 
 ### 2.3 Enum Pattern
 
@@ -128,7 +164,7 @@ At most two flags are `true` simultaneously (e.g. `active + released` for an ite
 
 Setup entities are non-versioned reference data. They support hierarchical organisation via the REFINES relationship where noted.
 
-> **Phase 2 change:** The former **Domain** setup entity — used to characterise OR impact via `IMPACTS_DOMAIN` — has been fully retired. The term *domain* now unambiguously refers to the domain key string from `domains.json` (see §2.4). The `DraftingGroup` enum is retained exclusively for `Bandwidth.scope` — it has been removed from OR and OC.
+> **Phase 2 change:** The former **Domain** setup entity — used to characterise OR impact via `IMPACTS_DOMAIN` — has been fully retired. The term *domain* now unambiguously refers to the domain key string from `domains.yaml` (see §2.4). The `DraftingGroup` enum is retained exclusively for `Bandwidth.scope` — it has been removed from OR and OC.
 
 #### ReferenceDocument (Strategic Documents)
 
@@ -216,7 +252,7 @@ Several attributes are type-specific. The service layer enforces these rules; th
 |---|---|---|---|---|---|
 | `version` | integer | both | mandatory | summary | Sequential (1, 2, 3…) |
 | `type` | enum | both | mandatory | summary | ON \| OR |
-| `domain` | string | both | mandatory | summary | Domain key from `domains.json` (see §2.4) |
+| `domain` | string | both | mandatory | summary | Domain key from `domains.yaml` (see §2.4) |
 | `maturity` | enum | both | mandatory | summary | DRAFT \| ADVANCED \| MATURE |
 | `tentative` | integer[] | **ON only** | mandatory (root ON), optional (child ON) | summary | Tentative implementation time: `[year]` or `[start, end]` where start ≤ end |
 | `nfrs` | rich text | **OR only** | optional | standard | Non-functional requirements from business perspective |
@@ -260,7 +296,7 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 | Field | Type | Cardinality | Projection | Notes |
 |---|---|---|---|---|
 | `version` | integer | mandatory | summary | Sequential |
-| `domain` | string | mandatory | summary | Domain key from `domains.json` (see §2.4) |
+| `domain` | string | mandatory | summary | Domain key from `domains.yaml` (see §2.4) |
 | `maturity` | enum | mandatory | summary | DRAFT \| ADVANCED \| MATURE |
 | `cost` | integer | optional | summary | Estimated development cost in MW |
 | `purpose` | rich text | mandatory | standard | Why the OC is needed |
@@ -297,34 +333,34 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 
 #### Chapter
 
-Chapters organise an ODIP Edition for human consumption. They group domains, carry narrative text, and define the O\* presentation order via `osHierarchy`. A domain chapter references a domain key from `domains.json`; a pure narrative chapter has no domain reference.
+Chapters organise an ODIP Edition for human consumption. They group domains, carry narrative text, and define the O\* presentation order via `osHierarchy`. A domain chapter references a domain key from `domains.yaml`; a pure narrative chapter has no domain reference.
 
-Chapters are **config-owned** (domain, position declared in `edition.json`) but **user-maintained** (narrative, osHierarchy edited by integrators). They are **versioned** — every narrative or hierarchy edit creates a new ChapterVersion. Chapters are created by the bootstrap process and cannot be deleted.
+Chapters are **config-owned** (domain, position declared in `edition.yaml`) but **user-maintained** (narrative, osHierarchy edited by integrators). They are **versioned** — every narrative or hierarchy edit creates a new ChapterVersion. Chapters are created by the bootstrap process and cannot be deleted.
 
 **Item node fields** (stable across versions, set at bootstrap):
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | integer | Neo4j internal ID |
-| `code` | string | Stable identifier (= chapter key from `edition.json`) |
-| `title` | string | Display title from `edition.json` |
+| `code` | string | Stable identifier (= chapter key from `edition.yaml`) |
+| `title` | string | Display title from `edition.yaml` |
 
 **Version node fields** (user-maintained, stored on ChapterVersion):
 
 | Field | Type | Cardinality | Notes |
 |---|---|---|---|
-| `narrative` | rich text | optional | Chapter introduction / narrative content. May contain `generated-block` marks (`{ type: 'generated-block', attrs: { id: string } }`) and `generated-string` marks (`{ type: 'generated-string', attrs: { key: string } }`). Valid block IDs and string keys per chapter are declared in `edition.json` under `generatedBlocks` and `generatedStrings` respectively. |
+| `narrative` | rich text | optional | Chapter introduction / narrative content. May contain `generated-block` marks (`{ type: 'generated-block', attrs: { id: string } }`) and `generated-string` marks (`{ type: 'generated-string', attrs: { key: string } }`). Valid block IDs and string keys per chapter are declared in `edition.yaml` under `generatedBlocks` and `generatedStrings` respectively. |
 | `jsonOsHierarchy` | JSON string | optional | Serialised OsHierarchy — deserialized to `osHierarchy` by store layer |
 
-**Config-owned fields** (not stored on nodes — merged from `edition.json` at read time by service layer):
+**Config-owned fields** (not stored on nodes — merged from `edition.yaml` at read time by service layer):
 
 | Field | Type | Notes |
 |---|---|---|
 | `domain` | string | Domain key — null on pure narrative chapters |
 | `position` | integer | Ordering within parent |
 | `parentKey` | string | Parent chapter code — null for top-level chapters |
-| `availableBlockIds` | string[] | Block IDs from `edition.json` `generatedBlocks` — drives toolbar ⚙ block picker |
-| `availableStringKeys` | string[] | String keys from `edition.json` `generatedStrings` — drives toolbar ⚙ string picker |
+| `availableBlockIds` | string[] | Block IDs from `edition.yaml` `generatedBlocks` — drives toolbar ⚙ block picker |
+| `availableStringKeys` | string[] | String keys from `edition.yaml` `generatedStrings` — drives toolbar ⚙ string picker |
 
 The chapter read model carries no `changeSetCommit`: the reason for a chapter version is read from the `AuditEvent` log via the History view (§3.4), as for O\*s. Chapters carry no `status` field — they are created at bootstrap and cannot be deleted.
 
@@ -601,7 +637,7 @@ At baseline creation, the system captures `HAS_ITEMS` relationships pointing to 
 
 ### 6.1 Drafting Groups (DRG)
 
-> **Deprecation note:** `DraftingGroup` is retained exclusively for `Bandwidth.scope`. It has been removed from `OperationalRequirement` and `OperationalChange` — O\*s now carry a `domain` string field validated against `domains.json`. Do not use `DraftingGroup` for any new O\* classification purpose.
+> **Deprecation note:** `DraftingGroup` is retained exclusively for `Bandwidth.scope`. It has been removed from `OperationalRequirement` and `OperationalChange` — O\*s now carry a `domain` string field validated against `domains.yaml`. Do not use `DraftingGroup` for any new O\* classification purpose.
 
 The `DraftingGroup` enum identifies the drafting group scope for bandwidth planning.
 
@@ -708,6 +744,8 @@ The kind of object an `AuditEvent` targets.
 ### 6.10 User Role
 
 The role under which a consequential write was performed — recorded frozen on the event. Writer roles only; passive users perform no consequential writes, so no `AuditEvent` ever carries a passive role. Source: blueprint RBA section.
+
+The enum lives in `model/user-roles.js` (moved out of `audit-elements.js` when RBA landed). It is the shared role model consumed by the audit log (`AuditEvent.userRole`), the `users.yaml` whitelist, the `permissions.yaml` matrix, and the server's `requirePermission()` middleware — audit is one consumer among several, not the owner.
 
 | Key | Meaning |
 |---|---|
