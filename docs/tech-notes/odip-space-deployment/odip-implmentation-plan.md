@@ -66,7 +66,13 @@ Two strictly separate flows: feedback on the application itself, and comments on
 
 ### 3.9 MOD — Content model and structured input
 
-Strategic anchoring, stakeholders and domains from governed picklists. Key change at P1/M4: split acting and impacted stakeholders into two fields, with a new three-level taxonomy and a documented migration of Edition 1 values. No P0 deliverable.
+Strategic anchoring, stakeholders and domains from governed picklists.
+
+| Req | Statement | Priority | Status |
+|---|---|---|---|
+| MOD-01 | Strategic anchoring from structured picklists at point of entry | P0 | ✅ Built |
+| MOD-02 | Acting/impacted stakeholder split; three-level taxonomy governance and Edition 1 migration | P0 | ⏳ Pending — taxonomy to be validated by iCDM before migration |
+| MOD-03 | Reason for change on narratives and chapters | P0 | ✅ Built |
 
 ### 3.10 ACR — Acronyms
 
@@ -94,23 +100,72 @@ Upload, version and associate documents with domains/themes/O*s. Full-text searc
 
 ---
 
-## 4. P0 status summary
+## 4. Progress summary
 
-P0 progress is tracked in detail only for topics where work has started (LCM, DEL). The remainder reflect the v0.4 priority assessment as captured at v0.1; their per-topic notes are still to be written.
+Progress is tracked per requirement. Topics with no started work carry their v0.4 priority assessment; their per-topic notes are still to be written.
 
-| Topic | P0 deliverable | Status |
-|---|---|---|
-| **LCM** | Change-set model; audit trail (LCM-03) | ✅ Built — change sets + `AuditEvent` log; History over the audit query |
-| **DEL** | Referential integrity (DEL-01); released-state soft-delete guard (DEL-02a) | ✅ Built — guards enforced end-to-end; soft delete (DEL-03, P1) also built |
-| **HIST** | Version history view | ✅ Built — client timeline over `AuditEvent` |
-| **RBA** | Passive/active model; action-permission matrix | ⏳ Pending — full note tbd; `x-user-role` plumbing in place, matrix hard-coded at P0 |
-| **OPS** | Daily backup (DB + JSON), off-site copy, retention, quarterly restore test | ⏳ Pending — full note tbd |
-| **DIF** | Field-by-field diff between versions | ⏳ Pending — full note tbd; deferred behind DEL/HIST |
-| **NAV** | Structured query + text search | ◐ Partial — structured query + O*-scope text search exist; cross-content text-search scope/highlighting/ranking parked pending design |
-| **FBK** | Bug report template + internal CRD | ✅ Out-of-app — lives on the iCDM SharePoint site; no application work |
-| MOD · ACR · DEP · PRI · OUT · QUA · DAM | — | No P0 deliverable |
+| Topic | Req | Priority | Status |
+|---|---|---|---|
+| **LCM** | LCM-01 Reason for change | P0 | ✅ Built — change sets + `AuditEvent` log |
+| | LCM-03 Audit trail | P0 | ✅ Built — `AuditEvent` log; History over the audit query |
+| | LCM-02 Change-set detail view | P1/M4 | ⏳ Pending |
+| | LCM-05 Change-set opt-in default | P1/M4 | ⏳ Pending |
+| **DEL** | DEL-01 Referential integrity block | P0 | ✅ Built — inbound-reference list enforced end-to-end |
+| | DEL-02a Released-state soft-delete guard | P0 | ✅ Built |
+| | DEL-03 Soft delete + restore | P1/M4 | ✅ Built ahead of schedule |
+| | DEL-06a Release | P1 | ⏳ Pending |
+| | DEL-06b Decommission | P1 | ⏳ Pending |
+| | DEL-02b Edition-capture wall (hard delete guard) | P1/M4 | ⏳ Pending |
+| | DEL-04 Hard delete | P1/M4 | ⏳ Pending |
+| | DEL-05 Edition deletion | P1/M4 | ⏳ Pending |
+| **HIST** | HIST Version history view | P0 | ✅ Built — client timeline over `AuditEvent` |
+| **RBA** | RBA-01 Passive/active model | P0 | ⏳ Pending — `x-user-role` plumbing in place |
+| | RBA-02 Action-permission matrix (hard-coded) | P0 | ⏳ Pending — full note tbd |
+| | RBA-02 Action-permission matrix (configurable) | P1/M4 | ⏳ Pending |
+| | RBA-03 Reviewer commenting | P1 | ⏳ Pending |
+| | RBA-04 Platform IAM | P2 | ⏳ Pending |
+| **OPS** | OPS-01 Daily backup, off-site copy, retention | P0 | ⏳ Pending — full note tbd |
+| | OPS-01 Quarterly restore test | P0 | ⏳ Pending |
+| **DIF** | DIF-01 Field-by-field diff between versions | P0 | ⏳ Pending — deferred behind DEL/HIST |
+| | DIF-02 Smart diff (AI-assisted classification) | P1/M3 | ⏳ Pending |
+| | DIF-03 Digests (AI-drafted, human-validated) | P1/M3 | ⏳ Pending |
+| | DIF-04 Evolutions lens | P2 | ⏳ Pending |
+| **NAV** | NAV-01 Structured query + O\*-scope text search | P0 | ◐ Partial — exists; cross-content scope/highlighting/ranking parked pending design |
+| | NAV-03 Deep links | P1/M4 | ⏳ Pending |
+| **FBK** | FBK-01 Bug report template + internal CRD | P0 | ✅ Out-of-app — lives on iCDM SharePoint; no application work |
+| | FBK-02 Feedback triage workflow | P0 | ✅ Out-of-app |
+| | FBK-04 CRD compilation, comment register | P1/M3 | ⏳ Pending |
+| | FBK-03 In-app feedback | P2 | ⏳ Pending |
+| | FBK-05 Structured in-app content commenting | P2 | ⏳ Pending |
+| **MOD** | MOD-01 Strategic anchoring picklists | P0 | ✅ Built |
+| | MOD-02 Acting/impacted stakeholder split + taxonomy | P0 | ⏳ Pending — taxonomy to be validated by iCDM before migration |
+| | MOD-03 Reason for change on narratives/chapters | P0 | ✅ Built |
+| **ACR** | ACR-01 Managed acronym register | P1/M4 | ⏳ Pending |
+| | ACR-02 Acronym tooltips | P1/M4 | ⏳ Pending |
+| | ACR-03 In-context capture | P1/M4 | ⏳ Pending |
+| | ACR-04 Portfolio quality check | P1/M4 | ⏳ Pending |
+| **DEP** | DEP-01 Logical OR–OR dependencies | P1/M4 | ⏳ Pending |
+| | DEP-02 Planning OC–OC dependencies | P1/M4 | ⏳ Pending |
+| | DEP-03 Four-step discovery mechanism | P1/M4 | ⏳ Pending |
+| | DEP-04 Deployment continuity check | P1/M4 | ⏳ Pending |
+| | DEP-05 Deployment continuity check (advisory) | P1/M4 | ⏳ Pending |
+| **PRI** | PRI-01 Waves as first-class objects | P1/M2 | ⏳ Pending |
+| | PRI-02 OC-to-wave assignment + bandwidth feedback | P1/M2 | ⏳ Pending |
+| | PRI-03 Scenarios — overlay model | P1/M2 | ⏳ Pending |
+| | PRI-04 "Must" flag on OCs/ORs | P1/M2 | ⏳ Pending |
+| | PRI-05 Plan views and pre-cooked views | P2 | ⏳ Pending |
+| | PRI-06 iCB reporting | P2 | ⏳ Pending |
+| **OUT** | OUT-01 Word + PDF output | P1/M4 | ⏳ Pending |
+| | OUT-02 CSV / XLSX / JSON export | P1/M4 | ⏳ Pending |
+| | OUT-03 Static website output | P2 | ⏳ Pending |
+| | OUT-04 Permanent ODIP-to-Jira feed | P2 | ⏳ Pending |
+| **QUA** | QUA-01 Editorial rules (non-blocking) | P1/M4 | ⏳ Pending |
+| | QUA-02 Portfolio quality checks | P1/M4 | ⏳ Pending |
+| | QUA-03 AI-assisted editorial harmonisation | P2 | ⏳ Pending |
+| **DAM** | DAM-01 Upload, version, associate documents | P1/M4 | ⏳ Pending |
+| | DAM-02 Full-text search over documents | P1/M4 | ⏳ Pending |
 
-**Pending for full P0 coverage:** the three topics with unbuilt P0 application work — **RBA** (roles/permission matrix), **OPS** (backup & restore), and **DIF** (version diff) — plus the **NAV** cross-content text-search gap (parked by choice, pending design). LCM, DEL, HIST and FBK are P0-complete. Within DEL specifically, nothing P0 remains; release/decommission/hard-delete/edition-deletion are all correctly P1.
+**Pending P0 items:** **RBA** (roles/permission matrix), **OPS** (backup & restore), **DIF** (version diff), **MOD-02** (stakeholder split + taxonomy, pending iCDM validation), and the **NAV** cross-content text-search gap (parked by choice). LCM, DEL P0, HIST, FBK, MOD-01 and MOD-03 are complete. Within DEL, release/decommission/hard-delete/edition-deletion are all correctly P1.
 
 > The P0/P1 split *within* the DEL topic is authoritative in its [design note](./odip-audit-delete-design.md) §1 and §5; this table is the cross-topic roll-up.
 
