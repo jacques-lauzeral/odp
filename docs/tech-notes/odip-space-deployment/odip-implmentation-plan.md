@@ -36,9 +36,20 @@ NAV and FBK are succinct here despite carrying P0 line items in v0.4:
 
 Every save of a managed object (O*, theme/chapter, narrative) is part of a change set carrying the reason for change (free text + classifier + optional comment refs). **Built and superseded in part by the audit/deletion revision** ([design note](./odip-audit-delete-design.md), [plan](./odip-audit-delete-plan.md)): the original per-version `HAS_REASON` edge is removed in favour of a single first-class **`AuditEvent`** log — the sole authoritative record of every consequential write — and the History view is a client-side timeline over that log. This realises **LCM-03 (audit trail) at P0**, reversing the v0.1 deferral. Maturity/no-show split parked.
 
-### 3.2 RBA — Roles and access → *full note tbd*
+### 3.2 RBA — Roles and access → [design note](./odip-rba-design.md)
 
 Passive vs active users, action-permission matrix as the single source of "who can do what, when". Interim authentication is an email whitelist (no password) until P2 platform IAM.
+
+The solution is **explicitly transitory** — designed for clean retirement at SSO (P2). The seam is a single `resolveUser()` middleware function; everything above it is unchanged when platform SSO arrives.
+
+All identity and access configuration lives in two YAML files under `$ODIP_HOME/config/` — no DB entities, no CLI tooling, no Manage UI:
+
+- **`users.yaml`** — email → role + domain scope; integrator-maintained
+- **`permissions.yaml`** — `method × path-pattern → roles[]`; developer-maintained
+
+The existing `domains.json` and `edition.json` migrate to YAML at the same time (`domains.yaml`, `edition.yaml`). The `loader.js` change is a one-liner per file; validation and accessors are unchanged. Two new `config.js` structure definitions and helpers (`resolveUserByEmail`, `isPermitted`, `matchesPath`) follow the existing pattern.
+
+The Connect dialog changes to email-only input; role is returned by the server from the whitelist lookup, never self-declared. The header user button shows role and domain scope (tooltip for `DOMAIN_WRITER`).
 
 ### 3.3 DEL — Deletion, recycle bin, decommissioning → [design note](./odip-audit-delete-design.md) · [plan](./odip-audit-delete-plan.md)
 
@@ -119,9 +130,11 @@ Progress is tracked per requirement. Topics with no started work carry their v0.
 | | DEL-04 Hard delete | P1/M4 | ⏳ Pending |
 | | DEL-05 Edition deletion | P1/M4 | ⏳ Pending |
 | **HIST** | HIST Version history view | P0 | ✅ Built — client timeline over `AuditEvent` |
-| **RBA** | RBA-01 Passive/active model | P0 | ⏳ Pending — `x-user-role` plumbing in place |
-| | RBA-02 Action-permission matrix (hard-coded) | P0 | ⏳ Pending — full note tbd |
-| | RBA-02 Action-permission matrix (configurable) | P1/M4 | ⏳ Pending |
+| **RBA** | RBA-01 Passive/active model | P0 | 📋 Designed — [design note](./odip-rba-design.md) §3–4 |
+| | RBA-02 Action-permission matrix (hard-coded) | P0 | 📋 Designed — [design note](./odip-rba-design.md) §3.4 |
+| | RBA-04 Interim auth (email whitelist + YAML config) | P0 | 📋 Designed — [design note](./odip-rba-design.md) §3.2–3.3 |
+| | RBA-02 Action-permission matrix (configurable) | P1/M4 | ⏳ Pending — recommend dropping (transitory) |
+| | RBA-03 Per-domain write scoping | P1/M4 | ⏳ Pending |
 | | RBA-03 Reviewer commenting | P1 | ⏳ Pending |
 | | RBA-04 Platform IAM | P2 | ⏳ Pending |
 | **OPS** | OPS-01 Daily backup, off-site copy, retention | P0 | ⏳ Pending — full note tbd |
@@ -165,7 +178,7 @@ Progress is tracked per requirement. Topics with no started work carry their v0.
 | **DAM** | DAM-01 Upload, version, associate documents | P1/M4 | ⏳ Pending |
 | | DAM-02 Full-text search over documents | P1/M4 | ⏳ Pending |
 
-**Pending P0 items:** **RBA** (roles/permission matrix), **OPS** (backup & restore), **DIF** (version diff), and the **NAV** cross-content text-search gap (parked by choice). LCM, DEL P0, HIST, FBK and MOD (all three requirements) are complete. Within DEL, release/decommission/hard-delete/edition-deletion are all correctly P1.
+**Pending P0 items:** **RBA** (implementation pending — design note complete), **OPS** (backup & restore), **DIF** (version diff), and the **NAV** cross-content text-search gap (parked by choice). LCM, DEL P0, HIST, FBK and MOD (all three requirements) are complete. Within DEL, release/decommission/hard-delete/edition-deletion are all correctly P1.
 
 > The P0/P1 split *within* the DEL topic is authoritative in its [design note](./odip-audit-delete-design.md) §1 and §5; this table is the cross-topic roll-up.
 
