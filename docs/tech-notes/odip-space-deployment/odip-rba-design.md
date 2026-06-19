@@ -232,7 +232,7 @@ permissions:
   # ── Wave assignment — iCDM and integrator ───────────────────────────────
   - { method: PUT,    path: /operational-changes/:id,             roles: [ICDM, INTEGRATOR] }
     # note: wave assignment rides on the standard OC PUT; domain scoping
-    # at P1 will distinguish the two write paths if needed
+  # at P1 will distinguish the two write paths if needed
 
   # ── Setup entities — integrator only ────────────────────────────────────
   - { method: POST,   path: /waves,                               roles: [INTEGRATOR] }
@@ -394,6 +394,35 @@ A lightweight POST route, no auth middleware applied. The only client-facing sur
 
 `Header.restoreUser()` silent migration of legacy lowercase role values (already built) covers existing `localStorage` sessions from the self-declaration era.
 
+### 4.4 Admin config reload endpoint
+
+A server restart is the default mechanism for picking up config changes. `domains.yaml` and `edition.yaml` are structural config — they require a restart and are **not** dynamically reloadable. `users.yaml` and `permissions.yaml` carry operational access data and support live reload without downtime.
+
+**Endpoint:** `POST /admin/config/reload?configs=<list>` — INTEGRATOR only
+
+- `configs` — comma-separated subset of `users`, `permissions` (required; `domains` and `edition` are rejected with 400)
+- Reloads only the specified configs atomically; others remain unchanged
+- Returns `200 { reloaded: ['users', 'permissions'] }` on success
+- Returns `500 { error: { code: 'CONFIG_RELOAD_FAILED', config: 'users', message } }` if validation fails — **previous config remains active**
+- Entry in `permissions.yaml`: `{ method: POST, path: /admin/config/reload, roles: [INTEGRATOR] }`
+
+**`odip-admin` integration:** a new `config-reload` command wraps the endpoint, consistent with the existing `standby` / `resume` pattern:
+
+```
+odip-admin config-reload [--users] [--permissions]
+```
+
+- Default (no flags): reloads both `users` and `permissions`
+- Builds the `configs=` query string from the flags provided
+- Calls `curl -sf -X POST "${SERVER_URL}/admin/config/reload?configs=<list>"`
+- Logs success or prints the validation error message on failure
+
+**`odip-admin` implementation notes (for the implementation session):**
+
+- `deploy_config_files()` — update to copy four YAML files: `domains.yaml`, `edition.yaml`, `users.yaml`, `permissions.yaml`; remove `domains.json` and `edition.json` references
+- `list_works_dirs()` — update to read `edition.yaml` instead of `edition.json`; replace `JSON.parse` with `require('${ODIP_REPO}/node_modules/js-yaml').load` (available post `npm install`); update comment accordingly
+- Add `config-reload` to `usage()`, `cmd_config_reload()` function, and dispatch `case`
+
 ---
 
 ## 5. Deferred and out of scope
@@ -416,11 +445,11 @@ Replaces `resolveUser()` middleware entirely. The rest of the stack — `permiss
 
 ---
 
-## 6. Open points
+## 6. Resolved decisions
 
-| # | Point | Owner |
+| # | Point | Resolution |
 |---|---|---|
-| 1 | `ASSIGN_WAVE` rides on `PUT /operational-changes/:id` — confirm DOMAIN_WRITER should be excluded from that path entirely, or is a separate wave-assignment endpoint needed to disambiguate? | Jacques |
-| 2 | P1 configurable matrix: formally drop or retain? Recommend dropping given transitory constraint | Jacques |
-| 3 | `MANAGE_SETUP` (waves, stakeholders, ref docs) restricted to `INTEGRATOR` — confirm iCDM has no setup-entity write need at P0 | Jacques |
-| 4 | Server restart on `users.yaml` change: acceptable operationally, or is a reload signal needed? | Jacques |
+| 1 | Permission granularity (e.g. `ASSIGN_WAVE` vs `PUT /operational-changes/:id`) | Operational concern — exact `permissions.yaml` content defined by integrators/iCDM; not a solution design matter |
+| 2 | P1 configurable matrix | Dropped — transitory constraint makes the investment unjustified |
+| 3 | `MANAGE_SETUP` role grants | Operational concern — exact grants defined in `permissions.yaml` by integrators/iCDM |
+| 4 | Config reload without restart | Admin reload endpoint added — `POST /admin/config/reload` (§4.4) |
