@@ -28,16 +28,16 @@ export const requirementReadConfig = {
             title: 'Main',
             fields: [
                 { row: [
-                    { key: 'refinesParents', hideIfNullOrEmpty: true },
+                        { key: 'refinesParents', hideIfNullOrEmpty: true },
                     ],
                     valueInline: true },
                 { key: 'implementedONs', visibleWhen: 'OR', hideIfNullOrEmpty: true },
                 { row: [
-                    { key: 'tentative', visibleWhen: 'ON' },
+                        { key: 'tentative', visibleWhen: 'ON' },
                     ],
                     valueInline: true},
                 { row: [
-                    { key: 'maturity',  },
+                        { key: 'maturity',  },
                     ],
                     valueInline: true},
                 { key: 'statement' },
@@ -46,6 +46,7 @@ export const requirementReadConfig = {
                 { key: 'nfrs',                 visibleWhen: 'OR' },
                 { key: 'dependencies',         visibleWhen: 'OR', hideIfNullOrEmpty: true },
                 { key: 'strategicDocuments',   visibleWhen: 'ON' },
+                { key: 'actingStakeholders',   visibleWhen: 'OR' },
                 { key: 'impactedStakeholders', visibleWhen: 'OR' },
                 { key: 'privateNotes' },
             ],
@@ -222,6 +223,19 @@ export const requirementEditConfig = {
                     formatKey: 'formatAnnotatedReferences',
                 },
                 {
+                    key: 'actingStakeholders',
+                    label: 'Acting Stakeholders',
+                    type: 'annotated-reference-list',
+                    required: false,
+                    visibleWhen: 'OR',
+                    maxNoteLength: 200,
+                    placeholder: 'Select stakeholder categories...',
+                    noteLabel: 'Note',
+                    optionsKey: 'getStakeholderCategoryOptions',
+                    setupEntity: 'stakeholderCategories',
+                    helpText: 'Select stakeholder categories that perform a role in this requirement and optionally add notes about the role',
+                },
+                {
                     key: 'impactedStakeholders',
                     label: 'Impacted Stakeholders',
                     type: 'annotated-reference-list',
@@ -321,6 +335,7 @@ export const requiredIdentifierArrayFields = [
 /** Annotated-reference-list fields that must always be present as arrays on save */
 export const requiredAnnotatedReferenceArrayFields = [
     'impactedStakeholders',
+    'actingStakeholders',
     'strategicDocuments',
 ];
 

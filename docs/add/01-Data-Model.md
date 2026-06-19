@@ -233,7 +233,8 @@ Several attributes are type-specific. The service layer enforces these rules; th
 | `refines` | both | optional | summary | Parent Requirement of same type |
 | `strategicDocuments` | **ON only** | mandatory (root ON), optional otherwise | summary | Annotated list of ReferenceDocuments |
 | `implementedONs` | **OR only** | mandatory (root OR), optional otherwise | summary | List of implemented ONs |
-| `impactedStakeholders` | **OR only** | mandatory (root OR), optional otherwise | summary | List of StakeholderCategories |
+| `actingStakeholders` | **OR only** | optional | summary | List of StakeholderCategories performing a role in the OR |
+| `impactedStakeholders` | **OR only** | mandatory (root OR), optional otherwise | summary | List of StakeholderCategories affected by the OR |
 | `dependencies` | **OR only** | optional | summary | List of ORs that must be implemented before this OR |
 
 > **`changeSetCommit` removed from the read model.** The reason for a version is no longer carried on the version (no `HAS_REASON` forward hop). Who/when/why is read from the `AuditEvent` log on demand via the History view (§3.4); it is not surfaced on common O\* reads.
@@ -526,7 +527,8 @@ Tree structure is enforced: a node can have only one parent. Self-reference is p
 
 | Relationship | From | To | Notes |
 |---|---|---|---|
-| `IMPACTS_STAKEHOLDER` | ORVersion | StakeholderCategory | |
+| `IMPACTS_STAKEHOLDER` | ORVersion | StakeholderCategory | Impacted stakeholder — affected by the OR |
+| `HAS_ACTING_STAKEHOLDER` | ORVersion | StakeholderCategory | Acting stakeholder — performs a role in the OR |
 | `REFERENCES` | RequirementVersion | ReferenceDocument | Optional `note` property (plain text, e.g. "Section 3.2") |
 
 ### 4.4 Milestone Relationships

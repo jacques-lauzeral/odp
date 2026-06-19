@@ -64,14 +64,14 @@ Structured query and free-text search exist today in the O*s workspace. The P0 g
 
 Two strictly separate flows: feedback on the application itself, and comments on ODIP content. At P0 both flows live on the iCDM SharePoint site (bug template + internal CRD) — no application work. AI-assisted CRD compilation arrives at P1; in-app feedback and structured content commenting at P2.
 
-### 3.9 MOD — Content model and structured input
+### 3.9 MOD — Content model and structured input ✅ closed
 
-Strategic anchoring, stakeholders and domains from governed picklists.
+Strategic anchoring, stakeholders and domains from governed picklists. All three requirements built across every layer (shared model, store, service, REST, CLI, web client) and documented in ADD chapters 01–04, 07, 08.
 
 | Req | Statement | Priority | Status |
 |---|---|---|---|
 | MOD-01 | Strategic anchoring from structured picklists at point of entry | P0 | ✅ Built |
-| MOD-02 | Acting/impacted stakeholder split; three-level taxonomy governance and Edition 1 migration | P0 | ⏳ Pending — taxonomy to be validated by iCDM before migration |
+| MOD-02 | Acting/impacted stakeholder split; three-level taxonomy governance and Edition 1 migration | P0 | ✅ Built — `actingStakeholders` field end-to-end; impacted filter business-match by default (descendant expansion via `HAS_ACTING_STAKEHOLDER` / `findDescendants`); taxonomy and migration done. UI exact-match toggle deferred (API-supported via `impactedStakeholderExactMatch`) |
 | MOD-03 | Reason for change on narratives and chapters | P0 | ✅ Built |
 
 ### 3.10 ACR — Acronyms
@@ -138,7 +138,7 @@ Progress is tracked per requirement. Topics with no started work carry their v0.
 | | FBK-03 In-app feedback | P2 | ⏳ Pending |
 | | FBK-05 Structured in-app content commenting | P2 | ⏳ Pending |
 | **MOD** | MOD-01 Strategic anchoring picklists | P0 | ✅ Built |
-| | MOD-02 Acting/impacted stakeholder split + taxonomy | P0 | ⏳ Pending — taxonomy to be validated by iCDM before migration |
+| | MOD-02 Acting/impacted stakeholder split + taxonomy | P0 | ✅ Built — field end-to-end; business-match default; taxonomy + migration done |
 | | MOD-03 Reason for change on narratives/chapters | P0 | ✅ Built |
 | **ACR** | ACR-01 Managed acronym register | P1/M4 | ⏳ Pending |
 | | ACR-02 Acronym tooltips | P1/M4 | ⏳ Pending |
@@ -165,7 +165,7 @@ Progress is tracked per requirement. Topics with no started work carry their v0.
 | **DAM** | DAM-01 Upload, version, associate documents | P1/M4 | ⏳ Pending |
 | | DAM-02 Full-text search over documents | P1/M4 | ⏳ Pending |
 
-**Pending P0 items:** **RBA** (roles/permission matrix), **OPS** (backup & restore), **DIF** (version diff), **MOD-02** (stakeholder split + taxonomy, pending iCDM validation), and the **NAV** cross-content text-search gap (parked by choice). LCM, DEL P0, HIST, FBK, MOD-01 and MOD-03 are complete. Within DEL, release/decommission/hard-delete/edition-deletion are all correctly P1.
+**Pending P0 items:** **RBA** (roles/permission matrix), **OPS** (backup & restore), **DIF** (version diff), and the **NAV** cross-content text-search gap (parked by choice). LCM, DEL P0, HIST, FBK and MOD (all three requirements) are complete. Within DEL, release/decommission/hard-delete/edition-deletion are all correctly P1.
 
 > The P0/P1 split *within* the DEL topic is authoritative in its [design note](./odip-audit-delete-design.md) §1 and §5; this table is the cross-topic roll-up.
 

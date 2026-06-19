@@ -32,6 +32,36 @@ export class OperationalRequirementService extends VersionedItemService {
     // - delete(itemId, user)
     // History is served by AuditEventService.getItemHistory (Phase A).
 
+    /**
+     * Resolve the impacted-stakeholder filter for the two supported match modes.
+     *
+     * `impactedStakeholderExactMatch` (boolean, default false):
+     *   - false (business, default) — the selected category plus all its descendants
+     *     in the StakeholderCategory REFINES tree (downward only).
+     *   - true (exact) — the selected category only.
+     *
+     * In both modes the store receives a flat ID list on `impactedStakeholder`;
+     * the match-mode key is consumed here and not forwarded. Acting-stakeholder
+     * filtering is exact-only and passed through untouched.
+     */
+    async _resolveFilters(filters, tx) {
+        const { impactedStakeholderExactMatch, ...rest } = filters;
+
+        if (rest.impactedStakeholder === undefined || rest.impactedStakeholder === null) {
+            return rest;
+        }
+
+        const selectedId = rest.impactedStakeholder;
+
+        if (impactedStakeholderExactMatch === true) {
+            return { ...rest, impactedStakeholder: [selectedId] };
+        }
+
+        // business (default)
+        const descendants = await stakeholderCategoryStore().findDescendants(selectedId, tx);
+        return { ...rest, impactedStakeholder: [selectedId, ...descendants.map(d => d.id)] };
+    }
+
     _getDeltaFieldNames() {
         return ['statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'];
     }
@@ -109,6 +139,7 @@ export class OperationalRequirementService extends VersionedItemService {
             implementedONs: patchPayload.implementedONs !== undefined ? patchPayload.implementedONs : current.implementedONs.map(ref => ref.id),
             dependencies: patchPayload.dependencies !== undefined ? patchPayload.dependencies : current.dependencies.map(ref => ref.id),
             impactedStakeholders: patchPayload.impactedStakeholders !== undefined ? patchPayload.impactedStakeholders : current.impactedStakeholders.map(ref => ({ id: ref.id, note: ref.note })),
+            actingStakeholders: patchPayload.actingStakeholders !== undefined ? patchPayload.actingStakeholders : current.actingStakeholders.map(ref => ({ id: ref.id, note: ref.note })),
             nfrs: patchPayload.nfrs !== undefined ? patchPayload.nfrs : current.nfrs
         };
     }
@@ -163,6 +194,9 @@ export class OperationalRequirementService extends VersionedItemService {
             if (payload.impactedStakeholders && payload.impactedStakeholders.length > 0) {
                 throw new Error('Validation failed: impactedStakeholders is only allowed on OR-type requirements');
             }
+            if (payload.actingStakeholders && payload.actingStakeholders.length > 0) {
+                throw new Error('Validation failed: actingStakeholders is only allowed on OR-type requirements');
+            }
         }
 
         // Validate tentative range if provided
@@ -210,7 +244,7 @@ export class OperationalRequirementService extends VersionedItemService {
     _validateRelationshipArrays(payload) {
         const arrayFields = [
             'refinesParents', 'implementedONs', 'dependencies',
-            'impactedStakeholders', 'strategicDocuments'
+            'impactedStakeholders', 'actingStakeholders', 'strategicDocuments'
         ];
         for (const field of arrayFields) {
             if (payload[field] !== undefined && !Array.isArray(payload[field])) {
@@ -219,7 +253,7 @@ export class OperationalRequirementService extends VersionedItemService {
         }
 
         // Validate {id, note?} object format for annotated reference arrays
-        const annotatedRefFields = ['impactedStakeholders', 'strategicDocuments'];
+        const annotatedRefFields = ['impactedStakeholders', 'actingStakeholders', 'strategicDocuments'];
         for (const field of annotatedRefFields) {
             if (payload[field]) {
                 for (const ref of payload[field]) {
@@ -301,6 +335,11 @@ export class OperationalRequirementService extends VersionedItemService {
 
         if (payload.impactedStakeholders && payload.impactedStakeholders.length > 0) {
             const ids = payload.impactedStakeholders.map(ref => ref.id);
+            validationPromises.push(this._validateEntityIds(ids, stakeholderCategoryStore(), 'stakeholder category'));
+        }
+
+        if (payload.actingStakeholders && payload.actingStakeholders.length > 0) {
+            const ids = payload.actingStakeholders.map(ref => ref.id);
             validationPromises.push(this._validateEntityIds(ids, stakeholderCategoryStore(), 'stakeholder category'));
         }
 

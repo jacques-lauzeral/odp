@@ -10,7 +10,7 @@
  *   isReadOnly              — boolean; true in Explore context
  *
  * Column set:
- *   Type · Code · Title · Maturity · Domain · Refines · Implements · Strategic Documents · Impacted Stakeholders
+ *   Type · Code · Title · Maturity · Domain · Refines · Implements · Strategic Documents · Acting Stakeholders · Impacted Stakeholders
  *
  * Grouping: Type · Domain · Maturity
  */
@@ -113,10 +113,16 @@ export default class OStarEntity {
                 appliesTo: ['on-node'],
             },
             impactedStakeholders: {
-                key: 'impactedStakeholders', label: 'Stakeholders', width: '120px',
+                key: 'impactedStakeholders', label: 'Impacted', width: '120px',
                 type: 'annotated-reference-list', sortable: false, maxDisplay: 2,
                 setupEntity: 'stakeholderCategories',
                 appliesTo: ['or-node', 'oc-node'],
+            },
+            actingStakeholders: {
+                key: 'actingStakeholders', label: 'Acting', width: '120px',
+                type: 'annotated-reference-list', sortable: false, maxDisplay: 2,
+                setupEntity: 'stakeholderCategories',
+                appliesTo: ['or-node'],
             },
         };
     }
@@ -126,7 +132,7 @@ export default class OStarEntity {
         return [
             c.type, c.code, c.title, c.maturity, c.domain,
             c.refinesParents, c.implements,
-            c.strategicDocuments, c.impactedStakeholders,
+            c.strategicDocuments, c.actingStakeholders, c.impactedStakeholders,
         ];
     }
 

@@ -311,6 +311,11 @@ components:
           items:
             $ref: '#/components/schemas/AnnotatedReference'
           description: "Impacted stakeholder categories — OR only"
+        actingStakeholders:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatedReference'
+          description: "Acting stakeholder categories — those performing a role in the OR — OR only"
         # --- rich-text fields (standard and extended projections only) ---
         statement:
           type: string
@@ -424,6 +429,12 @@ components:
             $ref: '#/components/schemas/AnnotatedReference'
           default: []
           description: "Impacted stakeholder category IDs — OR only"
+        actingStakeholders:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatedReference'
+          default: []
+          description: "Acting stakeholder category IDs — those performing a role in the OR — OR only"
         nfrs:
           type: string
           nullable: true
@@ -491,6 +502,10 @@ components:
           items:
             type: string
         impactedStakeholders:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatedReference'
+        actingStakeholders:
           type: array
           items:
             $ref: '#/components/schemas/AnnotatedReference'

@@ -23,7 +23,9 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--domain <domain>', 'Filter by domain key — see "odp domain list" for valid values')
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, statement, rationale, flows, and privateNotes')
-            .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs (comma-separated)')
+            .option('--impacted-stakeholder <id>', 'Filter by impacted stakeholder category ID (single ID; business match by default — see --impacted-stakeholder-exact-match)')
+            .option('--impacted-stakeholder-exact-match', 'Restrict --impacted-stakeholder to the selected category only; default is business match (also matches its descendants)')
+            .option('--acting-stakeholder <id>', 'Filter by acting stakeholder category ID (single ID; exact match)')
             .option('--lifecycle-face <face>', 'Lifecycle dataset: active | released | decommissioned | deleted (default: active)')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
@@ -102,7 +104,9 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (options.domain) params.push(`domain=${encodeURIComponent(options.domain)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
-        if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
+        if (options.impactedStakeholder) params.push(`impactedStakeholder=${encodeURIComponent(options.impactedStakeholder)}`);
+        if (options.impactedStakeholderExactMatch) params.push(`impactedStakeholderExactMatch=true`);
+        if (options.actingStakeholder) params.push(`actingStakeholder=${encodeURIComponent(options.actingStakeholder)}`);
         return params;
     }
 
@@ -118,7 +122,11 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (options.domain) filters.push(`domain=${options.domain}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
-        if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
+        if (options.impactedStakeholder) {
+            const scope = options.impactedStakeholderExactMatch ? 'exact' : 'business';
+            filters.push(`impacted-stakeholder=${options.impactedStakeholder} (${scope})`);
+        }
+        if (options.actingStakeholder) filters.push(`acting-stakeholder=${options.actingStakeholder}`);
         return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
     }
 
@@ -150,6 +158,11 @@ class OperationalRequirementCommands extends VersionedCommands {
         console.log(`Impacted Stakeholders:`);
         if (item.impactedStakeholders && item.impactedStakeholders.length > 0) {
             item.impactedStakeholders.forEach(s => console.log(`  - ${s.title} [ID: ${s.id}]`));
+        } else { console.log(`  None`); }
+
+        console.log(`Acting Stakeholders:`);
+        if (item.actingStakeholders && item.actingStakeholders.length > 0) {
+            item.actingStakeholders.forEach(s => console.log(`  - ${s.title} [ID: ${s.id}]`));
         } else { console.log(`  None`); }
 
         console.log(`Dependencies:`);
@@ -213,6 +226,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
+            .option('--acting-stakeholders <ids>', `Acting stakeholder category IDs (comma-separated)`)
             .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
             .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
             .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
@@ -231,6 +245,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseIds(options.implementedOns),
                         impactedStakeholders: this.parseIds(options.impactedStakeholders),
+                        actingStakeholders: this.parseIds(options.actingStakeholders),
                         dependencies: this.parseIds(options.dependencies),
                         changeSetId: options.changeSet
                     };
@@ -273,6 +288,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
+            .option('--acting-stakeholders <ids>', `Acting stakeholder category IDs (comma-separated)`)
             .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
             .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
             .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
@@ -292,6 +308,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseIds(options.implementedOns),
                         impactedStakeholders: this.parseIds(options.impactedStakeholders),
+                        actingStakeholders: this.parseIds(options.actingStakeholders),
                         dependencies: this.parseIds(options.dependencies),
                         changeSetId: options.changeSet
                     };
@@ -345,6 +362,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--parent <requirement-id>', 'Parent requirement ID')
             .option('--implemented-ons <on-ids>', 'Implemented ON requirement IDs (comma-separated)')
             .option('--impacted-stakeholders <ids>', 'Impacted stakeholder category IDs (comma-separated)')
+            .option('--acting-stakeholders <ids>', 'Acting stakeholder category IDs (comma-separated)')
             .option('--dependencies <ids>', 'Dependency OR IDs (comma-separated)')
             .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
             .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
@@ -363,6 +381,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                     if (options.parent) data.refinesParents = [options.parent];
                     if (options.implementedOns !== undefined) data.implementedONs = this.parseIds(options.implementedOns);
                     if (options.impactedStakeholders) data.impactedStakeholders = this.parseIds(options.impactedStakeholders);
+                    if (options.actingStakeholders) data.actingStakeholders = this.parseIds(options.actingStakeholders);
                     if (options.dependencies) data.dependencies = this.parseIds(options.dependencies);
                     data.changeSetId = options.changeSet;
                     if (options.commitNote) data.note = options.commitNote;

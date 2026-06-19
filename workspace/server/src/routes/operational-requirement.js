@@ -33,8 +33,16 @@ class OperationalRequirementRouter extends VersionedItemRouter {
             filters.strategicDocument = parseInt(req.query.strategicDocument);
         }
 
-        if (req.query.stakeholderCategory) {
-            filters.stakeholderCategory = parseInt(req.query.stakeholderCategory);
+        if (req.query.impactedStakeholder) {
+            filters.impactedStakeholder = parseInt(req.query.impactedStakeholder);
+        }
+
+        if (req.query.impactedStakeholderExactMatch !== undefined) {
+            filters.impactedStakeholderExactMatch = req.query.impactedStakeholderExactMatch === 'true';
+        }
+
+        if (req.query.actingStakeholder) {
+            filters.actingStakeholder = parseInt(req.query.actingStakeholder);
         }
 
         // Relationship-based filters (single Item ID)

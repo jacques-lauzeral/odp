@@ -103,6 +103,7 @@ Extends `BaseStore` with REFINES hierarchy management. `parentId` is managed exc
 - `createRefinesRelation(childId, parentId, tx)` — validates both nodes exist, prevents self-reference, enforces tree structure (deletes existing parent relationship before creating the new one)
 - `deleteRefinesRelation(childId, parentId, tx)` — removes a specific REFINES relationship
 - `findChildren(parentId, tx)` — direct children, ordered by `name`
+- `findDescendants(rootId, tx)` — full subtree below the root at any depth via transitive `REFINES*1..`, excluding the root itself, ordered by `name`
 - `findParent(childId, tx)` — direct parent, or `null` if root
 - `findRoots(tx)` — all nodes with no parent, ordered by `name`
 
@@ -204,7 +205,7 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 | `ChangeSetStore` | `BaseStore` | Non-versioned; status transitions; `findMembers` via audit `UNDER_CHANGESET` hop |
 | `AuditEventStore` | `BaseStore` | Append-only audit log; `TARGETS` / `UNDER_CHANGESET`; `log` + `findAll` (single audit-query method) |
 | `ChapterStore` | `VersionedItemStore` | No relationships; `findByKey(key, tx)` for bootstrap; config-owned fields merged at read time |
-| `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS_STAKEHOLDER`, `REFERENCES`, `DEPENDS_ON`, `IMPLEMENTS` |
+| `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS_STAKEHOLDER`, `HAS_ACTING_STAKEHOLDER`, `REFERENCES`, `DEPENDS_ON`, `IMPLEMENTS` |
 | `OperationalChangeStore` | `VersionedItemStore` | `IMPLEMENTS`, `DECOMMISSIONS`, `DEPENDS_ON`; milestones delegated |
 
 ---
@@ -264,6 +265,7 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature carries op
 | `strategicDocuments` | `REFERENCES` → ReferenceDocument | ON only | `note` |
 | `implementedONs` | `IMPLEMENTS` → OR Item (ON type) | OR only | — |
 | `impactedStakeholders` | `IMPACTS_STAKEHOLDER` → StakeholderCategory | OR only | `note` |
+| `actingStakeholders` | `HAS_ACTING_STAKEHOLDER` → StakeholderCategory | OR only | `note` |
 | `dependencies` | `DEPENDS_ON` → OR Item | OR only | — |
 
 **`findAll(tx, baselineId?, filters?, projection?, lifecycleFace?)`** — uses a single aggregated query (no N+1). `projection` defaults to `'standard'`; `'extended'` is rejected. `lifecycleFace` defaults to `'active'` and selects the anchoring edge in the live dataset (mutually exclusive with `baselineId`). The field list from `getProjectionFields('requirement', projection)` drives which OPTIONAL MATCHes and RETURN columns are emitted in `buildFindAllQuery`, and which fields are assembled from each record. Every row carries a `lifecycleStatus` object (four flags from `EXISTS {}` checks). Filters object:
@@ -276,7 +278,8 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature carries op
 | `text` | `string\|null` | CONTAINS across statement, rationale, flows, privateNotes |
 | `domain` | `string\|null` | Exact match on `version.domain` string field |
 | `maturity` | `string\|null` | Exact match on maturity enum value |
-| `stakeholderCategory` | `number\|null` | Single ID — EXISTS via IMPACTS_STAKEHOLDER → StakeholderCategory. OR type only |
+| `impactedStakeholder` | `number\|number[]\|null` | ID or ID list — EXISTS via IMPACTS_STAKEHOLDER → StakeholderCategory, matched with `id(sc) IN $impactedStakeholder`. A single value is wrapped to a one-element list; each element normalised. OR type only. The list supports business-match expansion (selected category + descendants) resolved at the service layer; the store sees only a flat ID list |
+| `actingStakeholder` | `number\|null` | Single ID — EXISTS via HAS_ACTING_STAKEHOLDER → StakeholderCategory. OR type only. Exact match only |
 | `strategicDocument` | `number\|null` | Single ID — EXISTS via REFERENCES → ReferenceDocument. ON type only |
 | `refinesParent` | `number\|null` | Single OR item ID — EXISTS via REFINES |
 | `dependsOn` | `number\|null` | Single OR item ID — EXISTS via DEPENDS_ON |
@@ -575,6 +578,7 @@ The four `LifecycleStatus` flags (`active` / `released` / `decommissioned` / `de
 // Operational cross-references (from version node to item node)
 (ORVersion)-[:REFINES]->(ORItem)
 (ORVersion)-[:IMPACTS_STAKEHOLDER {note}]->(StakeholderCategory)
+(ORVersion)-[:HAS_ACTING_STAKEHOLDER {note}]->(StakeholderCategory)
 (ORVersion)-[:REFERENCES {note}]->(ReferenceDocument)
 (ORVersion)-[:DEPENDS_ON]->(ORItem)
 (ORVersion)-[:IMPLEMENTS]->(ORItem)   // OR → ON links

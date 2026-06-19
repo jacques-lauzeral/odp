@@ -186,6 +186,7 @@ export default class RequirementForm extends CollectionEntityForm {
             transformed.implementedONs = [];
             transformed.dependencies = [];
             transformed.impactedStakeholders = [];
+            transformed.actingStakeholders = [];
             transformed.nfrs = undefined;
         } else {
             // ON-only fields must be cleared for ORs
@@ -563,7 +564,7 @@ export default class RequirementForm extends CollectionEntityForm {
         const type = formData.type;
 
         // Fields that are OR-only
-        const orOnlyFields = ['implementedONs', 'dependencies', 'impactedStakeholders', 'nfrs'];
+        const orOnlyFields = ['implementedONs', 'dependencies', 'impactedStakeholders', 'actingStakeholders', 'nfrs'];
         orOnlyFields.forEach(fieldKey => {
             const el = this.currentModal?.querySelector(`[data-field="${fieldKey}"]`);
             if (el) el.classList.toggle('hidden', type !== 'OR');

@@ -76,7 +76,7 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `requirement inbound-references <itemId>` | List live O\* items referencing this one (where-used) |
 | `requirement show-version <itemId> <versionNumber>` | Show specific version |
 
-**`requirement list` filter flags**: `--type ON|OR`, `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
+**`requirement list` filter flags**: `--type ON|OR`, `--domain`, `--title`, `--text`, `--impacted-stakeholder <id>` (single ID; business match by default — adding `--impacted-stakeholder-exact-match` restricts to the selected category only), `--acting-stakeholder <id>` (single ID, exact).
 
 **`requirement list` lifecycle face**: `--lifecycle-face active|released|decommissioned|deleted` (default: `active`). Selects which lifecycle dataset the list reads (the recycle bin is `deleted`); the value is forwarded as `?lifecycleFace=` and is mutually exclusive with `--edition`. The list table carries a `Lifecycle` column showing the item's true lifecycle flags (e.g. `active`, `active, released`).
 
@@ -86,7 +86,7 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`requirement show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends derived (reverse-traversal) fields: `implementedByORs`, `implementedByOCs`, `decommissionedByOCs`, `refinedBy`, `requiredByORs`. Fields absent from the projection render as `(not in projection)`. `show` also prints a `Lifecycle:` line — the item's true lifecycle flags from the `lifecycleStatus` summary-tier structure.
 
-**`requirement create/update` options**: `--type`, `--domain` (required on create), `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--maturity`, `--dependencies`, `--nfrs`.
+**`requirement create/update` options**: `--type`, `--domain` (required on create), `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--acting-stakeholders`, `--maturity`, `--dependencies`, `--nfrs`.
 
 **Change set (LCM)**: `requirement create/update/patch` require `--change-set <id>` (the OPEN change set the new version commits under) and accept an optional `--commit-note <text>` (recorded on the change-set link). These are folded into the request body as `changeSetId` / `note`. `delete` and `restore` are change-set-bound writes too — both require `--change-set <id>` and accept `--commit-note`. `inbound-references` is a read and takes neither.
 

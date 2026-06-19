@@ -50,12 +50,27 @@ paths:
             type: string
           description: "Full-text search across title, statement, rationale, flows, and nfrs"
           example: "security authentication"
-        - name: stakeholderCategory
+        - name: impactedStakeholder
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by impacted stakeholder category ID. Single ID. OR type only."
+          description: "Filter by impacted stakeholder category ID. Single ID. OR type only. Match scope controlled by impactedStakeholderExactMatch (business match by default)."
+          example: "123"
+        - name: impactedStakeholderExactMatch
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: "Impacted stakeholder match scope. false (default) is business match — also matches all descendants of the selected category in the StakeholderCategory hierarchy (downward); true restricts to the selected category only. Ignored without impactedStakeholder."
+          example: true
+        - name: actingStakeholder
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by acting stakeholder category ID. Single ID. OR type only. Exact match."
           example: "123"
         - name: strategicDocument
           in: query

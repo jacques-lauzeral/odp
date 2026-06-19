@@ -67,7 +67,8 @@ export const OperationalRequirement = {
     strategicDocuments: [],     // array of AnnotatedReference {id, title, note} (ReferenceDocument)
     // OR only — summary
     implementedONs: [],         // array of OperationalEntityReference {id, code, title, type}
-    impactedStakeholders: [],   // array of AnnotatedReference {id, title, note} (StakeholderCategory)
+    actingStakeholders: [],     // array of AnnotatedReference {id, title, note} (StakeholderCategory) — those performing a role
+    impactedStakeholders: [],   // array of AnnotatedReference {id, title, note} (StakeholderCategory) — those affected
     dependencies: [],           // array of OperationalEntityReference {id, code, title, type} (OR)
 
     // rich-text fields — available in standard and extended projections only

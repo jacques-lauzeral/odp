@@ -306,7 +306,8 @@ export default class OsActivity {
             type:       'type',
             maturity:   'maturity',
             domain:     'domain',
-            stakeholderCategory: 'stakeholderCategory',
+            impactedStakeholder: 'impactedStakeholder',
+            actingStakeholder:   'actingStakeholder',
             strategicDocument:   'strategicDocument',
         };
 
@@ -373,7 +374,11 @@ export default class OsActivity {
                 options: Object.keys(MaturityLevel).map(k => ({ value: k, label: getMaturityLevelDisplay(k) })),
             },
             {
-                key: 'stakeholderCategory', label: 'Stakeholder', inputType: 'suggest',
+                key: 'actingStakeholder', label: 'Acting Stakeholder', inputType: 'suggest',
+                options: (this.setupData?.stakeholderCategories ?? []).map(s => ({ value: s.id, label: s.name })),
+            },
+            {
+                key: 'impactedStakeholder', label: 'Impacted Stakeholder', inputType: 'suggest',
                 options: (this.setupData?.stakeholderCategories ?? []).map(s => ({ value: s.id, label: s.name })),
             },
             {

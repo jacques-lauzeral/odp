@@ -4,7 +4,7 @@ import { getProjectionFields } from '../../../shared/src/index.js';
 
 /**
  * Store for OperationalRequirement items with versioning and relationship management.
- * Handles REFINES, IMPACTS_STAKEHOLDER, REFERENCES (ON only),
+ * Handles REFINES, IMPACTS_STAKEHOLDER, HAS_ACTING_STAKEHOLDER, REFERENCES (ON only),
  * IMPLEMENTS (OR only), and DEPENDS_ON (OR only) relationships.
  *
  * Supports three query contexts (mutually exclusive):
@@ -108,12 +108,21 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }`);
                     params.strategicDocument = this.normalizeId(filters.strategicDocument);
                 }
-                if (filters.stakeholderCategory !== undefined && filters.stakeholderCategory !== null) {
+                if (filters.impactedStakeholder !== undefined && filters.impactedStakeholder !== null) {
                     whereConditions.push(`EXISTS {
                     MATCH (version)-[:IMPACTS_STAKEHOLDER]->(sc:StakeholderCategory)
-                    WHERE id(sc) = $stakeholderCategory
+                    WHERE id(sc) IN $impactedStakeholder
                 }`);
-                    params.stakeholderCategory = this.normalizeId(filters.stakeholderCategory);
+                    params.impactedStakeholder = (Array.isArray(filters.impactedStakeholder)
+                        ? filters.impactedStakeholder
+                        : [filters.impactedStakeholder]).map(id => this.normalizeId(id));
+                }
+                if (filters.actingStakeholder !== undefined && filters.actingStakeholder !== null) {
+                    whereConditions.push(`EXISTS {
+                    MATCH (version)-[:HAS_ACTING_STAKEHOLDER]->(sc:StakeholderCategory)
+                    WHERE id(sc) = $actingStakeholder
+                }`);
+                    params.actingStakeholder = this.normalizeId(filters.actingStakeholder);
                 }
                 if (filters.domain !== undefined && filters.domain !== null) {
                     whereConditions.push('version.domain = $domain');
@@ -163,6 +172,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
             OPTIONAL MATCH (version)-[scRel:IMPACTS_STAKEHOLDER]->(sc:StakeholderCategory)
             `;
             }
+            if (includeField('actingStakeholders')) {
+                cypher += `
+            OPTIONAL MATCH (version)-[ascRel:HAS_ACTING_STAKEHOLDER]->(asc:StakeholderCategory)
+            `;
+            }
 
             if (includeField('implementedONs')) {
                 cypher += `
@@ -207,7 +221,10 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 collect(DISTINCT CASE WHEN sc IS NOT NULL
                     THEN {id: id(sc), title: sc.name, note: scRel.note}
                     ELSE NULL END) as impactedStakeholders` : ''}
-
+                ${includeField('actingStakeholders') ? `,
+                collect(DISTINCT CASE WHEN asc IS NOT NULL
+                    THEN {id: id(asc), title: asc.name, note: ascRel.note}
+                    ELSE NULL END) as actingStakeholders` : ''}
                 ${includeField('implementedONs') ? `,
                 collect(DISTINCT CASE WHEN on IS NOT NULL
                     THEN {id: id(on), code: on.code, title: on.title, type: onVersion.type}
@@ -282,7 +299,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }
 
                 const relFields = [
-                    'refinesParents', 'impactedStakeholders',
+                    'refinesParents', 'impactedStakeholders', 'actingStakeholders',
                     'implementedONs', 'strategicDocuments', 'dependencies'
                 ];
                 for (const f of relFields) {
@@ -480,6 +497,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
         const {
             refinesParents,
             impactedStakeholders,
+            actingStakeholders,
             implementedONs,
             strategicDocuments,
             dependencies,
@@ -490,6 +508,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             relationshipIds: {
                 refinesParents: refinesParents || [],
                 impactedStakeholders: impactedStakeholders || [],
+                actingStakeholders: actingStakeholders || [],
                 implementedONs: implementedONs || [],
                 strategicDocuments: strategicDocuments || [],
                 dependencies: dependencies || []
@@ -518,6 +537,18 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 ORDER BY target.name
             `, { versionId });
             const impactedStakeholders = stakeholderResult.records.map(record => ({
+                id: this.normalizeId(record.get('id')),
+                title: record.get('title'),
+                note: record.get('note') || ''
+            }));
+
+            const actingStakeholderResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[rel:HAS_ACTING_STAKEHOLDER]->(target:StakeholderCategory)
+                WHERE id(version) = $versionId
+                RETURN id(target) as id, target.name as title, rel.note as note
+                ORDER BY target.name
+            `, { versionId });
+            const actingStakeholders = actingStakeholderResult.records.map(record => ({
                 id: this.normalizeId(record.get('id')),
                 title: record.get('title'),
                 note: record.get('note') || ''
@@ -552,7 +583,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             `, { versionId });
             const dependencies = dependsOnResult.records.map(record => this._buildReference(record));
 
-            return { refinesParents, impactedStakeholders, implementedONs, strategicDocuments, dependencies };
+            return { refinesParents, impactedStakeholders, actingStakeholders, implementedONs, strategicDocuments, dependencies };
         } catch (error) {
             throw new StoreError(`Failed to build relationship references: ${error.message}`, error);
         }
@@ -566,6 +597,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const {
                 refinesParents = [],
                 impactedStakeholders = [],
+                actingStakeholders = [],
                 implementedONs = [],
                 strategicDocuments = [],
                 dependencies = []
@@ -600,6 +632,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             await this._createAnnotatedRelationships(versionId, 'IMPACTS_STAKEHOLDER', 'StakeholderCategory', impactedStakeholders, transaction);
+            await this._createAnnotatedRelationships(versionId, 'HAS_ACTING_STAKEHOLDER', 'StakeholderCategory', actingStakeholders, transaction);
 
             if (implementedONs.length > 0) {
                 const normalizedONIds = implementedONs.map(id => this.normalizeId(id));

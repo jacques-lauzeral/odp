@@ -147,6 +147,31 @@ export class RefinableEntityStore extends BaseStore {
     }
 
     /**
+     * Finds all descendants of an entity — the full subtree below it, at any depth,
+     * via the transitive REFINES hierarchy. Does not include the root itself.
+     *
+     * @param {number} rootId - Neo4j internal ID of the root entity
+     * @param {Transaction} transaction - Transaction instance
+     * @returns {Promise<Array<object>>} - Array of descendant entities sorted by name
+     * @throws {StoreError} - If query fails
+     */
+    async findDescendants(rootId, transaction) {
+        try {
+            const numericRootId = parseInt(rootId, 10);
+            const result = await transaction.run(`
+        MATCH (root:${this.nodeLabel})<-[:REFINES*1..]-(descendant:${this.nodeLabel})
+        WHERE id(root) = $rootId
+        RETURN DISTINCT descendant
+        ORDER BY descendant.name
+      `, { rootId: numericRootId });
+
+            return this.transformRecords(result.records, 'descendant');
+        } catch (error) {
+            throw new StoreError(`Failed to find descendants: ${error.message}`, error);
+        }
+    }
+
+    /**
      * Finds the direct parent of a child entity.
      *
      * @param {number} childId - Neo4j internal ID of child entity

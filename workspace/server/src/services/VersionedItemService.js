@@ -317,6 +317,8 @@ export class VersionedItemService {
                 resolvedFilters    = { ...filters, editionId: context.editionId };
             }
 
+            resolvedFilters = await this._resolveFilters(resolvedFilters, tx);
+
             const entities = await this.getStore().findAll(
                 tx, resolvedBaselineId, resolvedFilters, projection, lifecycleFace
             );
@@ -331,6 +333,20 @@ export class VersionedItemService {
     // -------------------------------------------------------------------------
     // Abstract methods
     // -------------------------------------------------------------------------
+
+    /**
+     * Resolve / rewrite the content filter object before it reaches the store,
+     * within the getAll transaction. Default is pass-through. Subclasses override
+     * to expand business-level filter semantics into the flat shape the store
+     * expects (e.g. descendant expansion of a hierarchical category filter).
+     *
+     * @param {object} filters
+     * @param {Transaction} tx - the live getAll transaction
+     * @returns {Promise<object>} the resolved filters
+     */
+    async _resolveFilters(filters, tx) {
+        return filters;
+    }
 
     async _validateCreatePayload(payload) {
         throw new Error('_validateCreatePayload must be implemented by subclass');

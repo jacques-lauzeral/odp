@@ -134,11 +134,13 @@ There is **no read-side `changeSetCommit` hydration** (Phase A — audit foundat
 
 **Lifecycle face (dataset selector).** `getAll` and `getById` carry an optional `lifecycleFace` (`active` default / `released` / `decommissioned` / `deleted`), appended **last** in the signature to match the store's `findAll` / `findById` argument order. It selects which lifecycle edge anchors a **live-dataset** read and is mutually exclusive with `editionId` (the baseline-snapshot dataset): `_assertFaceEditionExclusive(editionId, lifecycleFace)` rejects a non-`active` face combined with an `editionId` (`Validation failed:` message → 400). The service forwards `lifecycleFace` to the store, which derives the four `lifecycleStatus` flags into every read row regardless of face.
 
+**Filter resolution (`_resolveFilters`).** `getAll` calls `_resolveFilters(filters, tx)` after edition resolution and before the store read, within the same transaction. The base implementation is pass-through; subclasses override it to expand business-level filter semantics into the flat shape the store expects. `OperationalRequirementService` overrides it for the impacted-stakeholder filter, whose match scope is controlled by the boolean `impactedStakeholderExactMatch` (default `false`): when `false` (**business**, the default) the filter resolves to the selected category plus all its descendants in the StakeholderCategory `REFINES` tree (downward only), obtained via `stakeholderCategoryStore().findDescendants(selectedId, tx)`; when `true` (**exact**) it resolves to the selected category alone. In both cases the store receives a flat ID list on `impactedStakeholder` (the `IN` match), and the `impactedStakeholderExactMatch` key is consumed here, never forwarded. The acting-stakeholder filter (`actingStakeholder`) is exact-only and passes through untouched.
+
 **Lifecycle transitions.** `softDelete` and `restore` are concrete on the base — the logic is identical for ON/OR and OC, and the store methods are likewise concrete on `VersionedItemStore`. Each opens one transaction, runs its precondition guard, calls the store transition, and commits:
 
 - **`softDelete`** enforces a two-step precondition before mutating, both inside the transaction (Neo4j backstops neither — only `LATEST_VERSION` is moved):
-    1. *Lifecycle-state guard* — the item must be Active and **not** Released (`lifecycleStatus.active && !released`, read via `store.findById`). The store's `softDelete` enforces only the `LATEST_VERSION`-present edge guard; the "not released" rule lives in the service because the store would otherwise drop `LATEST_VERSION` on a still-released item. A released item's only sanctioned exits are release/decommission (DEL-06). Failure throws `ServiceError(INVALID_LIFECYCLE_STATE)`.
-    2. *Reference guard* — `store.findInboundReferences` must return empty. A non-empty list throws `ServiceError(LIFECYCLE_BLOCKED, references)` carrying the `OperationalEntityReference[]`.
+  1. *Lifecycle-state guard* — the item must be Active and **not** Released (`lifecycleStatus.active && !released`, read via `store.findById`). The store's `softDelete` enforces only the `LATEST_VERSION`-present edge guard; the "not released" rule lives in the service because the store would otherwise drop `LATEST_VERSION` on a still-released item. A released item's only sanctioned exits are release/decommission (DEL-06). Failure throws `ServiceError(INVALID_LIFECYCLE_STATE)`.
+  2. *Reference guard* — `store.findInboundReferences` must return empty. A non-empty list throws `ServiceError(LIFECYCLE_BLOCKED, references)` carrying the `OperationalEntityReference[]`.
 - **`restore`** enforces the lifecycle-state guard **only** — the item must be in the Deleted state (read via `store.findById(..., lifecycleFace='deleted')`); failure throws `ServiceError(INVALID_LIFECYCLE_STATE)`. There is no reference guard: re-adding `LATEST_VERSION` cannot introduce a new blocker.
 
 `release` / `decommission` / `hardDelete` and the cross-cutting `BatchService.applyLifecycleBatch` are designed (DEL-06 / DEL-04) but not built this round.
@@ -156,12 +158,12 @@ Key validation rules:
 - `type` must be `ON` or `OR` (validated against `OperationalRequirementType` enum)
 - `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
 - `domain` is mandatory and must be a valid domain key from `domains.json` (validated via `isDomainValid()`)
-- Type-gated fields — `ON` only: `tentative`, `strategicDocuments`; `OR` only: `implementedONs`, `dependencies`, `impactedStakeholders` — rejected on the wrong type
+- Type-gated fields — `ON` only: `tentative`, `strategicDocuments`; `OR` only: `implementedONs`, `dependencies`, `impactedStakeholders`, `actingStakeholders` — rejected on the wrong type
 - `tentative` if present must be `{start, end}` integer year range with `start <= end`
 - `implementedONs` only allowed on `OR`-type requirements; each referenced item must exist and be `ON`-type
 - `OR` requirements cannot refine `ON` requirements (and vice versa); parent type checked per-item
-- Annotated reference arrays (`impactedStakeholders`, `strategicDocuments`) must use `{id, note?}` object format
-- Referenced entities (`impactedStakeholders`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
+- Annotated reference arrays (`impactedStakeholders`, `actingStakeholders`, `strategicDocuments`) must use `{id, note?}` object format
+- Referenced entities (`impactedStakeholders`, `actingStakeholders`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
 - `_requestModelFor(op)` returns `OperationalRequirementRequests.{create|update}` (patch → update), enabling the base strict-payload check. Note this is independent of the existing type-immutability rule: `type` is an *allowed* field on update (the client sends it back), while `_validateUpdatePayload` separately rejects *changing* it.
 
 **Narrative generator support:**
@@ -332,12 +334,12 @@ Every service method follows the same try/catch/rollback structure:
 ```javascript
 const tx = createTransaction(user.id, user.role);
 try {
-    const result = await store.someMethod(data, tx);
-    await commitTransaction(tx);
-    return result;
+  const result = await store.someMethod(data, tx);
+  await commitTransaction(tx);
+  return result;
 } catch (error) {
-    await rollbackTransaction(tx);
-    throw error;
+  await rollbackTransaction(tx);
+  throw error;
 }
 ```
 
@@ -370,8 +372,8 @@ The route mapping for `LIFECYCLE_BLOCKED` / `INVALID_LIFECYCLE_STATE` arrives wi
 | Enum values valid | Service, before transaction | Uses `@odp/shared` enum validators |
 | `maturity` valid | Service, before transaction | `MaturityLevel` enum on OR and OC |
 | Array field types | Service, before transaction | Checks `Array.isArray` |
-| `{id, note?}` object format | Service, before transaction | For `impactedStakeholders`, `strategicDocuments` |
-| Type-gated fields (ON/OR) | Service, before transaction | Wrong-type fields rejected immediately (OR only: `implementedONs`, `dependencies`, `impactedStakeholders`) |
+| `{id, note?}` object format | Service, before transaction | For `impactedStakeholders`, `actingStakeholders`, `strategicDocuments` |
+| Type-gated fields (ON/OR) | Service, before transaction | Wrong-type fields rejected immediately (OR only: `implementedONs`, `dependencies`, `impactedStakeholders`, `actingStakeholders`) |
 | `tentative` range integrity | Service, before transaction | `start <= end`, both integers |
 | `orCosts` structure | Service, before transaction | `{orId, cost}` with integer cost |
 | Referenced entity existence | Service, separate `'system'` tx | Per-entity store `.exists()` calls |

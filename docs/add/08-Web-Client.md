@@ -807,6 +807,7 @@ Filtered nodes carry `_contextOnly: true` to distinguish them from true headers.
 |---|---|
 | `strategicDocuments` | `referenceDocuments` |
 | `impactedStakeholders` | `stakeholderCategories` |
+| `actingStakeholders` | `stakeholderCategories` |
 
 ### 7.7 DiffPopup
 
@@ -956,7 +957,7 @@ The +ON / +OR / +OC create buttons are owned by `OsActivity` (toolbar row), only
 
 **Search** — free-text input (debounced 300ms), maps to the `text` parameter, visually separate from structured filters.
 
-**Filter bar** — Type · Domain · Maturity · Stakeholder · Implements · Strategic Document.
+**Filter bar** — Type · Domain · Maturity · Impacted Stakeholder · Acting Stakeholder · Implements · Strategic Document. The impacted-stakeholder filter applies **business match** (the selected category and its descendants) — the service default; the acting-stakeholder filter is exact. An exact-match toggle for the impacted filter is not surfaced in the UI (the API supports it via `impactedStakeholderExactMatch`).
 
 **Grouping** — Type · Domain · Maturity.
 
@@ -972,6 +973,7 @@ The +ON / +OR / +OC create buttons are owned by `OsActivity` (toolbar row), only
 | Implements | OR, OC | No |
 | Refines | ON, OR | No |
 | Strategic Documents | ON only | No |
+| Acting Stakeholders | OR only | No |
 | Impacted Stakeholders | OR, OC | No |
 
 **OC type normalisation** — OCs from `/operational-changes` have no `type` field; normalised to `'OC'` in `_loadData()` after merge.

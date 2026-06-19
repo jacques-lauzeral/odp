@@ -46,6 +46,7 @@ const FIELD_SET_FIELDS = {
             'refinesParents',
             'implementedONs',
             'impactedStakeholders',
+            'actingStakeholders',
             'strategicDocuments',
             'dependencies',
         ],
