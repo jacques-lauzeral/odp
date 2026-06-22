@@ -2104,6 +2104,10 @@ export class CollectionEntityForm {
      */
     _attachConfirmOnChangeListeners(editConfig) {
         if (!this.currentModal || !editConfig) return;
+        // Edit-only: a confirmOnChange field guards a *re-assignment* from an existing
+        // value. In create mode there is no prior value (and currentItem is null), so
+        // the confirmation is both semantically wrong and would read a placeholder type.
+        if (this.currentMode !== 'edit') return;
         for (const section of editConfig.sections) {
             for (const entry of section.fields) {
                 const entries = entry.row ? entry.row : [entry];

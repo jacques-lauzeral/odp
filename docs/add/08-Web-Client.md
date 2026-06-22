@@ -420,7 +420,7 @@ Both share a common shape: `{ sections: [ { title, modes?, fields: [...] } ] }`.
 - `_isSectionVisibleFromConfig()` applies section `modes` and per-field `visibleWhen`.
 - `_renderConfigEntry()` / `_renderConfigRow()` handle bare fields and `row` wrappers, applying `hideIfNullOrEmpty` and `valueInline`.
 - `_resolveFieldDef()` looks up metadata by key from the field map; `_resolveEntryVisible()` evaluates `visibleWhen`.
-- `_attachConfirmOnChangeListeners()` wires `confirmOnChange` fields after the modal DOM is ready (called from each form's modal-ready hook). The handler is async and uses `odipConfirm` from `user-dialogs.js` (§7.8) with the message `Do you really want to re-assign this ${type} to another domain?` — replacing `window.confirm`.
+- `_attachConfirmOnChangeListeners()` wires `confirmOnChange` fields after the modal DOM is ready (called from each form's modal-ready hook). The handler is async and uses `odipConfirm` from `user-dialogs.js` (§7.8) with the message `Do you really want to re-assign this ${type} to another domain?` — replacing `window.confirm`. **Edit mode only:** the method returns early when `currentMode !== 'edit'`, so a create form never prompts — there is no prior value to re-assign from, and `currentItem` is null in create.
 
 There is no header/strip concept: `code` and `title` are shown in the detail toolbar (`requirement-details.js` / `change-details.js` render `code — title`, matching the TOC), not repeated inside the form body.
 
@@ -1158,7 +1158,9 @@ Each side also receives a guard predicate from the activity — `canStartHierarc
 
 **Delete theme** — in the read-mode topic header, beside **Edit**, a **Delete theme** `odip-btn--danger` button shows when the theme has no O*s and no subtopics. It is disabled while a hierarchy session holds the narrative-edit lock (same treatment as Edit). Clicking delegates directly to `onThemeDelete(topicId)`; the change-set commit dialog run by the activity is the cancellable gate, mirroring the O* soft-delete pattern.
 
-**O\* soft delete** — the `ostar` body view (`RequirementDetails` / `ChangeDetails` in panel mode) carries the **Delete** affordance described in §8.2.4. ChapterBody wires `onDelete` to `_handleOStarDeleted(item)`, which clears the body to its placeholder and forwards to `onOStarDeleted(item)`. The cross-cutting cleanup — TOC deselect, `app.invalidateOStars()`, and `refreshTree()` so the deleted card drops out of topic and unassigned lists — is owned by `NarrativeActivity`, consistent with the rule that every chapter-scope side effect lives in the activity, not the body.
+**O\* soft delete** — the `ostar` body view (`RequirementDetails` / `ChangeDetails` in panel mode) carries the **Delete** affordance described in §8.2.4. ChapterBody wires `onDelete` to `_handleOStarDeleted(item)`, which clears the body to its placeholder and forwards to `onOStarDeleted(item)`. The cross-cutting cleanup is owned by `NarrativeActivity._handleOStarDeleted`, consistent with the rule that every chapter-scope side effect lives in the activity, not the body. There is no O\*-level TOC deselect — the body self-clears and the tree re-parse drops the card; the activity's only job is to re-sync the tree with the server.
+
+That re-sync runs through the shared `NarrativeActivity._refreshSelectedChapterTree(errorContext)` helper — the single source of truth for "the selected chapter changed underneath us": re-fetch the chapter, `_mergeChapterConfig`, `app.invalidateOStars()`, recompute the unassigned bucket, reparse the hierarchy, `refreshTree()`. Both `_handleOStarDeleted` and `_handleOStarSaved` (O\* edit/create from the detail view) delegate to it. The re-fetch is essential here because soft delete triggers the **server-side `osHierarchy` cascade** (§3, Service Layer): the server excises the deleted O\* from the chapter and writes a new `ChapterVersion`, so the re-fetched chapter already lacks the ref and carries the current `versionId` — the client reflects the cascade without needing to know it happened.
 
 #### 8.3.6 Internal Link Navigation
 
@@ -1216,6 +1218,8 @@ Every chapter write lives in `NarrativeActivity`; `ChapterBody` only collects in
 `ChapterService` overrides `update()` and `patch()` from `VersionedItemService`. Both call `super.update/patch` (which commits the write transaction) then immediately call `this.getById(itemId, userId)` (enriched `GET`) and return its result. This guarantees that **every write to a chapter returns the same enriched read-shape as `GET /chapters/{id}`** — `osHierarchy` items are always `{ id, type, code, title }` objects, never bare integer ids.
 
 **Invariant:** client code must never use `updated.osHierarchy` from a PATCH response to rebuild the render-side hierarchy via a second `getChapter()` call. The PATCH response is already enriched.
+
+**Server-side cascade — chapter changes without a client write.** A chapter's `osHierarchy` can also change when the client never PATCHed it: an O\* soft delete, or an O\* domain change, triggers the server-side cascade (§3, Service Layer) that excises the O\* from its domain chapter and writes a new `ChapterVersion`. On the read side this is invisible — `GET /chapters/{id}` filters its `osHierarchy` to the chapter's live domain set regardless, so a stale ref never reaches the client even before the cascade runs. The narrative activity nonetheless re-fetches the chapter after these O\* operations (via `_refreshSelectedChapterTree`) so the in-memory `versionId` stays current; otherwise the next fetch-fresh PATCH would still be correct, but the displayed tree would lag the server until then.
 
 #### 8.3.10 Navigation Guards and Session Teardown
 
@@ -1680,7 +1684,7 @@ Soft delete (DEL-03) is a change-set-bound write that does not go through a form
 3. **Refusal** — a `409` is mapped to `odipLifecycleConflict(message, references)` (§7.8): `INVALID_LIFECYCLE_STATE` (released / not-Active) shows the message alone; `LIFECYCLE_BLOCKED` adds the blocking live inbound-reference list from `error.data.references`. The helper returns `false`; no cleanup runs.
 4. **Success** — the helper returns `true`; the detail view fires `onDelete(item)`.
 
-The detail view owns steps 1–4 but performs no UI cleanup. Each parent supplies `onDelete` and owns the consequence: `OsActivity` clears the panel + selection and reloads (panel) or navigates back to the collection (page); `ChapterBody` clears the body and forwards to `NarrativeActivity` for TOC deselect + `app.invalidateOStars()` + `refreshTree()`.
+The detail view owns steps 1–4 but performs no UI cleanup. Each parent supplies `onDelete` and owns the consequence: `OsActivity` clears the panel + selection and reloads (panel) or navigates back to the collection (page); `ChapterBody` clears the body and forwards to `NarrativeActivity`, which re-syncs the tree via `_refreshSelectedChapterTree` (re-fetch → `app.invalidateOStars()` → reparse → `refreshTree()`). The re-fetch picks up the server-side `osHierarchy` cascade that the soft delete triggered (§3, §8.3.9), so the deleted card drops out and the chapter `versionId` stays current.
 
 **Scope this round.** Only soft delete from the O* detail form is built. Restore, the recycle-bin view, the `lifecycleFace` selector, and lifecycle-state display are deferred (P1+). The conflict dialog renders blocking references as plain text — navigable blocker links are not built this round.
 
