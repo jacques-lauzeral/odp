@@ -33,6 +33,27 @@ export class OperationalRequirementService extends VersionedItemService {
     // History is served by AuditEventService.getItemHistory (Phase A).
 
     /**
+     * @override — ONs and ORs appear in chapter osHierarchy and carry a domain, so
+     * this service participates in the referential-integrity cascade (soft delete +
+     * domain change). See VersionedItemService cascade seam.
+     */
+    _cascadesDomainChange() {
+        return true;
+    }
+
+    /**
+     * @override — excise this O* from the given domain's chapter osHierarchy, inside
+     * the triggering transaction. Delegates the hierarchy knowledge to ChapterService;
+     * dynamic import avoids the ChapterService ⇄ O*Service module cycle at load time
+     * (the instance is only needed at request time).
+     */
+    async _detachFromChapterOsHierarchy(itemId, domain, changeSetCommit, tx) {
+        if (!domain) return;
+        const { default: chapterService } = await import('./ChapterService.js');
+        await chapterService.exciseOStarFromChapter(itemId, domain, changeSetCommit, tx);
+    }
+
+    /**
      * Resolve the impacted-stakeholder filter for the two supported match modes.
      *
      * `impactedStakeholderExactMatch` (boolean, default false):

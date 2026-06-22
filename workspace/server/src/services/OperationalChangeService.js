@@ -33,6 +33,27 @@ export class OperationalChangeService extends VersionedItemService {
     // History is served by AuditEventService.getItemHistory (Phase A).
 
     /**
+     * @override — OCs appear in chapter osHierarchy and carry a domain, so this
+     * service participates in the referential-integrity cascade (soft delete +
+     * domain change). See VersionedItemService cascade seam.
+     */
+    _cascadesDomainChange() {
+        return true;
+    }
+
+    /**
+     * @override — excise this OC from the given domain's chapter osHierarchy, inside
+     * the triggering transaction. Delegates the hierarchy knowledge to ChapterService;
+     * dynamic import avoids the ChapterService ⇄ O*Service module cycle at load time
+     * (the instance is only needed at request time).
+     */
+    async _detachFromChapterOsHierarchy(itemId, domain, changeSetCommit, tx) {
+        if (!domain) return;
+        const { default: chapterService } = await import('./ChapterService.js');
+        await chapterService.exciseOStarFromChapter(itemId, domain, changeSetCommit, tx);
+    }
+
+    /**
      * Strict-payload accepted-field sets (messages.js). 'patch' uses the update
      * model — a patch is any subset of the update-writable fields. (OC milestone
      * mutations route through dedicated methods, not generic update/patch, so they

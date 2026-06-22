@@ -77,7 +77,9 @@ export class VersionedItemService {
     async _doUpdate(itemId, payload, expectedVersionId, tx) {
         const { data, changeSetCommit } = this._extractChangeSetCommit(payload);
         await this._validateUpdatePayload(data, itemId);
+        const formerDomain = await this._readFormerDomain(itemId, tx);
         const entity = await this.getStore().update(itemId, data, expectedVersionId, tx, changeSetCommit);
+        await this._cascadeDomainChange(itemId, formerDomain, data.domain, changeSetCommit, tx);
         await commitTransaction(tx);
         return entity;
     }
@@ -98,6 +100,7 @@ export class VersionedItemService {
             await this._validateUpdatePayload(completePayload, itemId);
 
             const entity = await store.update(itemId, completePayload, expectedVersionId, tx, changeSetCommit);
+            await this._cascadeDomainChange(itemId, current.domain, completePayload.domain, changeSetCommit, tx);
             await commitTransaction(tx);
             return entity;
         } catch (error) {
@@ -175,6 +178,7 @@ export class VersionedItemService {
             }
 
             await this.getStore().softDelete(itemId, changeSetCommit, tx);
+            await this._detachFromChapterOsHierarchy(itemId, current.domain, changeSetCommit, tx);
             // Re-read the full item so the response carries title + lifecycleStatus.
             // After the transition the item is on the Deleted face, so read it there.
             const updated = await this.getStore().findById(itemId, tx, null, null, 'standard', 'deleted');
@@ -346,6 +350,69 @@ export class VersionedItemService {
      */
     async _resolveFilters(filters, tx) {
         return filters;
+    }
+
+    // -------------------------------------------------------------------------
+    // Chapter osHierarchy referential-integrity cascade
+    //
+    // osHierarchy is a JSON blob on ChapterVersion, not graph edges — Neo4j cannot
+    // enforce referential integrity against it. When an O* leaves a domain chapter's
+    // scope (soft delete removes it from every scope; a domain change removes it from
+    // its former scope) the corresponding osHierarchy ref would otherwise dangle.
+    //
+    // The base wires the two triggers (softDelete, update/patch domain change) into a
+    // single seam — _detachFromChapterOsHierarchy — run inside the same transaction so
+    // the chapter excise and the O* write commit atomically. Default is a no-op:
+    // services without a domain (and ChapterService itself) are unaffected. OR/OC
+    // override it to excise the ref from the given domain's chapter, writing a new
+    // ChapterVersion (append-only model preserved — captured edition versions are never
+    // mutated; the cascade reuses the triggering operation's changeSetCommit).
+    // -------------------------------------------------------------------------
+
+    /**
+     * Detach an O* reference from the osHierarchy of the chapter owning `domain`.
+     * Default no-op. Overridden by services whose entities carry a domain.
+     *
+     * @param {number} itemId
+     * @param {string|null} domain — the domain whose chapter must drop the ref
+     * @param {object} changeSetCommit — {changeSetId, note} of the triggering op
+     * @param {Transaction} tx — the live triggering transaction
+     */
+    async _detachFromChapterOsHierarchy(itemId, domain, changeSetCommit, tx) {
+        // no-op
+    }
+
+    /**
+     * Read the current (pre-write) domain of an item, used to detect a domain change
+     * in the update path (patch already has `current` in hand and calls the cascade
+     * directly). Returns null when the service does not cascade or the item has no
+     * domain — _doUpdate then short-circuits without an extra read on the common path.
+     */
+    async _readFormerDomain(itemId, tx) {
+        if (!this._cascadesDomainChange()) return null;
+        const current = await this.getStore().findById(itemId, tx);
+        return current?.domain ?? null;
+    }
+
+    /**
+     * Fire the detach cascade when an update/patch moved the item to a different
+     * domain. The former chapter must drop the ref; the new chapter picks it up
+     * naturally as an unclassified O* (no write needed there). No-op when the domain
+     * is unchanged, absent, or the service does not cascade.
+     */
+    async _cascadeDomainChange(itemId, formerDomain, newDomain, changeSetCommit, tx) {
+        if (!this._cascadesDomainChange()) return;
+        if (!formerDomain || formerDomain === newDomain) return;
+        await this._detachFromChapterOsHierarchy(itemId, formerDomain, changeSetCommit, tx);
+    }
+
+    /**
+     * Opt-in flag: true on services whose entities appear in chapter osHierarchy and
+     * carry a domain (OR/OC). Default false — the base reads no former domain and the
+     * domain-change cascade is inert.
+     */
+    _cascadesDomainChange() {
+        return false;
     }
 
     async _validateCreatePayload(payload) {

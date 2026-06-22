@@ -97,10 +97,15 @@ export class ChapterService extends VersionedItemService {
         if (!result) return null;
         const merged = this._mergeConfigFields(result);
         if (!this._hasHierarchyItems(merged.osHierarchy)) return merged;
-        const oStarMap = await this._buildOStarMap(user);
+        // Domain-scoped O* map: only O*s belonging to this chapter's domain, resolved in
+        // the same context (live or edition) as the chapter read. Refs in osHierarchy that
+        // fall outside this set — a soft-deleted O*, or one moved to another domain — are
+        // dropped on read and logged (Mechanism 2). The intersection runs in every context
+        // so the edition view matches what the user saw at capture time.
+        const oStarMap = await this._buildOStarMap(user, merged.domain, editionId);
         return {
             ...merged,
-            osHierarchy: this._enrichOsHierarchy(merged.osHierarchy, oStarMap),
+            osHierarchy: this._enrichOsHierarchy(merged.osHierarchy, oStarMap, merged.code),
         };
     }
 
@@ -132,20 +137,120 @@ export class ChapterService extends VersionedItemService {
     }
 
     /**
+     * @override — chapters carry no domain and never cascade. The inherited no-op
+     * is sufficient; this explicit override documents that a chapter write never
+     * triggers a further chapter excise.
+     */
+    async _detachFromChapterOsHierarchy() {
+        // no-op — chapters are not domain-scoped O* containers of themselves
+    }
+
+    // -------------------------------------------------------------------------
+    // osHierarchy referential-integrity cascade (write path)
+    //
+    // Called by OperationalRequirementService / OperationalChangeService when an O*
+    // leaves a domain chapter's scope (soft delete, or domain change). Runs inside
+    // the triggering transaction so the chapter excise and the O* write commit
+    // atomically. Writes a NEW ChapterVersion (append-only model preserved — any
+    // ChapterVersion already captured by an edition is untouched) reusing the
+    // triggering operation's changeSetCommit so the chapter edit is audited under
+    // the same change set as the O* event that caused it.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Remove every reference to `itemId` from the osHierarchy of the chapter that
+     * owns `domain`. No-op when the domain has no chapter, the chapter has no
+     * osHierarchy, or the ref is not present. Writes a new ChapterVersion only when
+     * the hierarchy actually changed.
+     *
+     * @param {number} itemId — the O* leaving the domain
+     * @param {string} domain — the domain whose chapter must drop the ref
+     * @param {object} changeSetCommit — {changeSetId, note} of the triggering op
+     * @param {Transaction} tx — the live triggering transaction
+     * @returns {Promise<void>}
+     */
+    async exciseOStarFromChapter(itemId, domain, changeSetCommit, tx) {
+        if (!domain) return;
+
+        const chapterConfig = getChapters().find(c => c.domain === domain);
+        if (!chapterConfig) return;
+
+        const chapter = await this.getStore().findByCode(chapterConfig.key, tx);
+        if (!chapter || !chapter.osHierarchy) return;
+
+        const targetId = normalizeId(itemId);
+        const { hierarchy, changed } = this._removeOStarFromHierarchy(chapter.osHierarchy, targetId);
+        if (!changed) return;
+
+        await this.getStore().update(
+            chapter.itemId,
+            { narrative: chapter.narrative, osHierarchy: hierarchy },
+            chapter.versionId,
+            tx,
+            changeSetCommit
+        );
+    }
+
+    /**
+     * Pure transform: return a copy of `hierarchy` with every occurrence of
+     * `targetId` removed from ons/ors/ocs across all topics and subtopics, plus a
+     * `changed` flag. Topics themselves are retained even if emptied — theme removal
+     * is a separate, user-driven action (a domain change / delete must not silently
+     * delete a topic).
+     *
+     * @param {object} hierarchy — { topics: OsHierarchyTopic[] } (write shape: bare ids)
+     * @param {number} targetId — normalised id to strip
+     * @returns {{ hierarchy: object, changed: boolean }}
+     */
+    _removeOStarFromHierarchy(hierarchy, targetId) {
+        let changed = false;
+
+        const stripArray = (ids) => {
+            if (!Array.isArray(ids)) return ids;
+            const kept = ids.filter(id => normalizeId(id) !== targetId);
+            if (kept.length !== ids.length) changed = true;
+            return kept;
+        };
+
+        const stripTopic = (topic) => ({
+            ...topic,
+            ons:       stripArray(topic.ons),
+            ors:       stripArray(topic.ors),
+            ocs:       stripArray(topic.ocs),
+            subtopics: (topic.subtopics ?? []).map(stripTopic),
+        });
+
+        const next = {
+            ...hierarchy,
+            topics: (hierarchy.topics ?? []).map(stripTopic),
+        };
+        return { hierarchy: next, changed };
+    }
+
+    /**
      * Build a single lookup map of normalised itemId → {id, type, code, title}
-     * from all requirements (ON + OR) and all changes (OC) in one pass.
+     * from the requirements (ON + OR) and changes (OC) belonging to `domain`,
+     * resolved in the given context (live when editionId is null, otherwise the
+     * edition snapshot).
      *
      * Delegates to OperationalRequirementService and OperationalChangeService so
      * transaction lifecycle is owned by the service layer — no raw store calls.
      * Uses 'summary' projection to avoid fetching rich-text fields.
      *
+     * The map is the live (or edition) domain O* set; it is the yardstick the read
+     * filter intersects osHierarchy against. An O* absent from it is stale relative
+     * to the chapter (soft-deleted, or moved to another domain) and is dropped.
+     *
      * @param {object} user — {id, role}
+     * @param {string|null} domain — chapter domain; null on pure narrative chapters
+     * @param {number|null} editionId — context selector (null = live)
      * @returns {Promise<Map<number, {id: number, type: string, code: string, title: string}>>}
      */
-    async _buildOStarMap(user) {
+    async _buildOStarMap(user, domain, editionId = null) {
+        const filters = domain ? { domain } : {};
         const [requirements, changes] = await Promise.all([
-            OperationalRequirementService.getAll(user, null, {}, 'summary').catch(() => []),
-            OperationalChangeService.getAll(user, null, {}, 'summary').catch(() => []),
+            OperationalRequirementService.getAll(user, editionId, filters, 'summary').catch(() => []),
+            OperationalChangeService.getAll(user, editionId, filters, 'summary').catch(() => []),
         ]);
 
         const map = new Map();
@@ -162,57 +267,90 @@ export class ChapterService extends VersionedItemService {
 
     /**
      * Recursively enrich an OsHierarchy object — replace bare integer ids
-     * in ons/ors/ocs arrays with {id, type, code, title} objects.
-     * Unknown ids are preserved as {id, type, code: null, title: null}.
+     * in ons/ors/ocs arrays with {id, type, code, title} objects, dropping any
+     * id absent from the domain-scoped O* map (a stale ref: soft-deleted O*, or
+     * one moved to another domain). Dropped ids are collected and logged once per
+     * chapter at WARN — the filtering is invisible to the user but observable in
+     * the server logs, and a signal that the write-time cascade missed a case or
+     * that pre-existing dirty data exists.
      *
-     * The stored structure uses bare ids on write; this enrichment is
-     * read-only and does not affect the persisted form.
+     * The stored structure uses bare ids on write; this enrichment is read-only and
+     * does not affect the persisted form. The cascade (write path) is what actually
+     * removes stale refs from storage; this filter only tolerates them on read.
      *
      * @param {object} hierarchy  — { topics: OsHierarchyTopic[] }
      * @param {Map}    oStarMap   — normalised itemId → {id, type, code, title}
+     * @param {string} chapterCode — for the WARN log
      * @returns {object}
      */
-    _enrichOsHierarchy(hierarchy, oStarMap) {
+    _enrichOsHierarchy(hierarchy, oStarMap, chapterCode) {
         if (!hierarchy?.topics) return hierarchy;
-        return {
+        const dropped = [];
+        const enriched = {
             ...hierarchy,
-            topics: hierarchy.topics.map(t => this._enrichTopic(t, oStarMap)),
+            topics: hierarchy.topics.map(t => this._enrichTopic(t, oStarMap, dropped)),
         };
+        if (dropped.length > 0) {
+            console.warn(
+                `[ChapterService] osHierarchy: dropped ${dropped.length} stale ref(s) ` +
+                `in chapter ${chapterCode}: [${dropped.join(', ')}]`
+            );
+        }
+        return enriched;
     }
 
     /**
-     * Enrich a single topic recursively.
+     * Enrich a single topic recursively, dropping stale refs into `dropped`.
      * @param {object} topic
      * @param {Map}    oStarMap
+     * @param {number[]} dropped — accumulator for ids not found in the map
      * @returns {object}
      */
-    _enrichTopic(topic, oStarMap) {
+    _enrichTopic(topic, oStarMap, dropped) {
         return {
             ...topic,
-            ons:       (topic.ons ?? []).map(id => this._resolveOStarItem(id, 'ON',  oStarMap)),
-            ors:       (topic.ors ?? []).map(id => this._resolveOStarItem(id, 'OR',  oStarMap)),
-            ocs:       (topic.ocs ?? []).map(id => this._resolveOStarItem(id, 'OC',  oStarMap)),
-            subtopics: (topic.subtopics ?? []).map(sub => this._enrichTopic(sub, oStarMap)),
+            ons:       this._resolveOStarArray(topic.ons, 'ON', oStarMap, dropped),
+            ors:       this._resolveOStarArray(topic.ors, 'OR', oStarMap, dropped),
+            ocs:       this._resolveOStarArray(topic.ocs, 'OC', oStarMap, dropped),
+            subtopics: (topic.subtopics ?? []).map(sub => this._enrichTopic(sub, oStarMap, dropped)),
         };
     }
 
     /**
-     * Resolve a bare integer id to an enriched O* item.
-     * Falls back gracefully if id not found in map.
+     * Resolve and filter one O* id array: keep ids present in the map (enriched),
+     * drop the rest into `dropped`. Order is preserved.
+     *
+     * @param {number[]} ids
+     * @param {string} impliedType — 'ON' | 'OR' | 'OC'
+     * @param {Map} oStarMap
+     * @param {number[]} dropped
+     * @returns {Array<{id, type, code, title}>}
+     */
+    _resolveOStarArray(ids, impliedType, oStarMap, dropped) {
+        const out = [];
+        for (const rawId of (ids ?? [])) {
+            const resolved = this._resolveOStarItem(rawId, impliedType, oStarMap);
+            if (resolved) out.push(resolved);
+            else dropped.push(rawId);
+        }
+        return out;
+    }
+
+    /**
+     * Resolve a bare integer id to an enriched O* item, or null when the id is
+     * absent from the domain-scoped map (stale ref — the caller drops and logs it).
      *
      * @param {number} rawId
      * @param {string} impliedType  — 'ON' | 'OR' | 'OC' (from array context)
      * @param {Map}    oStarMap
-     * @returns {{ id: number, type: string, code: string|null, title: string|null }}
+     * @returns {{ id: number, type: string, code: string, title: string }|null}
      */
     _resolveOStarItem(rawId, impliedType, oStarMap) {
         try {
             const nid = normalizeId(rawId);
-            const found = oStarMap.get(nid);
-            if (found) return found;
-            return { id: nid, type: impliedType, code: null, title: null };
+            return oStarMap.get(nid) ?? null;
         } catch {
-            return { id: rawId, type: impliedType, code: null, title: null };
+            return null;
         }
     }
 

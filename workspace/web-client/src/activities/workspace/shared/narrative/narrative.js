@@ -423,6 +423,7 @@ export default class NarrativeActivity {
             onChapterNarrativeSave: (narrative)           => this._handleChapterNarrativeSave(narrative),
             onThemeDelete:          (topicId)             => this._handleThemeDelete(topicId),
             onOStarSaved:           (result, mode) => this._handleOStarSaved(result, mode),
+            onOStarDeleted:         (item)         => this._handleOStarDeleted(item),
             // LCM edit-session coordination (2c) — the body opens/closes the
             // 'narrative' session so the TOC can refuse to start a drag meanwhile.
             onEditSessionStart:     ()      => this._beginNarrativeSession(),
@@ -1102,14 +1103,26 @@ export default class NarrativeActivity {
     // -------------------------------------------------------------------------
 
     /**
-     * Called by ChapterBody after an O* is saved from its detail view (edit or create).
-     * Re-fetches the chapter to pick up the enriched hierarchy (so a changed title
-     * shows in the tree), then refreshes the TOC tree while preserving the active
-     * selection and scroll position.
-     * @param {object} _result — saved O* entity (unused; chapter re-fetch is authoritative)
-     * @param {string} _mode   — 'create' | 'edit'
+     * Re-sync the TOC with the server's current state of the selected chapter.
+     *
+     * Re-fetches the chapter (authoritative source for the enriched osHierarchy and
+     * the current versionId), merges config-owned fields, invalidates the O* cache,
+     * recomputes the unassigned bucket, and refreshes the tree while preserving the
+     * active selection and scroll position.
+     *
+     * Shared by every trigger that mutates the chapter's osHierarchy underneath us:
+     *   - an O* edit/create from its detail view (_handleOStarSaved)
+     *   - an O* soft delete, which the server cascades into an osHierarchy excise
+     *     and a new chapter version (_handleOStarDeleted)
+     *   - an O* domain change, same cascade (also reaches us via _handleOStarSaved)
+     *
+     * The chapter re-fetch is what keeps the local versionId in step with the
+     * server-side cascade — without it the next structure/narrative PATCH would
+     * fetch-fresh anyway, but the displayed tree would be stale until then.
+     *
+     * @param {string} errorContext — tag for errorHandler on failure
      */
-    async _handleOStarSaved(_result, _mode) {
+    async _refreshSelectedChapterTree(errorContext) {
         const chapter = this._selectedChapter;
         if (!chapter) return;
 
@@ -1125,8 +1138,31 @@ export default class NarrativeActivity {
             this._toc._unassignedOStars = unassigned;
             this._toc.refreshTree();
         } catch (error) {
-            errorHandler.handle(error, 'narrative-ostar-saved');
+            errorHandler.handle(error, errorContext);
         }
+    }
+
+    /**
+     * Called by ChapterBody after an O* is saved from its detail view (edit or create).
+     * Re-fetches the chapter so a changed title — or a domain change, which the server
+     * cascades into an osHierarchy excise — is reflected in the tree.
+     * @param {object} _result — saved O* entity (unused; chapter re-fetch is authoritative)
+     * @param {string} _mode   — 'create' | 'edit'
+     */
+    async _handleOStarSaved(_result, _mode) {
+        await this._refreshSelectedChapterTree('narrative-ostar-saved');
+    }
+
+    /**
+     * Called by ChapterBody after an O* is soft-deleted from its detail view. The body
+     * has already cleared itself to the placeholder; here we re-sync the tree so the
+     * deleted card drops out of its topic / the unassigned bucket. The server has
+     * cascaded the delete into an osHierarchy excise + new chapter version, so the
+     * re-fetch also brings the local versionId current.
+     * @param {object} _item — the deleted O* (unused; chapter re-fetch is authoritative)
+     */
+    async _handleOStarDeleted(_item) {
+        await this._refreshSelectedChapterTree('narrative-ostar-deleted');
     }
 
     // -------------------------------------------------------------------------
