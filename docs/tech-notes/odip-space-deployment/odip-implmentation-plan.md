@@ -1,6 +1,8 @@
 # ODIP Implementation Plan
 
-*v0.2 — 18 June 2026 — DRAFT for discussion*
+*v0.3 — 22 June 2026 — DRAFT for discussion*
+
+> **Status note (22 Jun 2026).** **OPS** database backup is now built and verified: a `systemd --user` timer drives the daily/weekly/monthly/yearly rotation over the existing standby-aware dump, with a dedicated [design note](./odip-ops-design.md). JSON export form and off-site copy remain parked.
 
 > **Status note (18 Jun 2026).** Two topics have advanced to implementation since v0.1: **LCM** (the audit/change-set foundation) and **DEL** (deletion), now driven by a dedicated design note and detailed plan (§3.3). The change-set model and a first-class `AuditEvent` log are built; soft delete is built. P0 status across topics is summarised in §4.
 
@@ -59,9 +61,11 @@ The lifecycle is an **edge-based model** on the O* version node (`LATEST_VERSION
 
 Field-by-field diff between any two versions of O*s, narratives and chapters, in dataset and edition contexts. Smart diff and evolutions lens are later milestones.
 
-### 3.5 OPS — Operations and resilience → *full note tbd*
+### 3.5 OPS — Operations and resilience → [design note](./odip-ops-design.md)
 
-Daily automatic backup in two forms (database + JSON), one copy off-site, retention 30 daily + 12 monthly, never delete the most recent of any kind. Quarterly restore test by integrators collectively.
+Daily automatic backup of the Neo4j database, with daily/weekly/monthly/yearly slot rotation (never delete the most recent of any kind). The schedule runs as a `systemd --user` timer on the host — the only layer with access to host `podman`, which the dump sequence requires; it survives logout via lingering and needs no root. The standby-aware dump (server enters standby, Neo4j stops, `neo4j-admin dump`, restart, resume) is reused unchanged from the manual `odip-admin dump` path. **The database-backup P0 is built and verified end-to-end.**
+
+Two items parked: the **JSON export form** (second backup form — CLI export exists but is not wired into the rotation) and the **off-site copy** (pending an EC IT discussion on cloud vs network share). The **quarterly restore test** is procedural — integrators collectively, no application work.
 
 ### 3.6 HIST — Version history view → *folded into LCM/DEL audit work*
 
@@ -137,8 +141,10 @@ Progress is tracked per requirement. Topics with no started work carry their v0.
 | | RBA-03 Per-domain write scoping | P1/M4 | ⏳ Pending |
 | | RBA-03 Reviewer commenting | P1 | ⏳ Pending |
 | | RBA-04 Platform IAM | P2 | ⏳ Pending |
-| **OPS** | OPS-01 Daily backup, off-site copy, retention | P0 | ⏳ Pending — full note tbd |
-| | OPS-01 Quarterly restore test | P0 | ⏳ Pending |
+| **OPS** | OPS-01 Daily DB backup, slot rotation | P0 | ✅ Built — `systemd --user` timer; daily/weekly/monthly/yearly rotation; standby-aware dump; verified end-to-end |
+| | OPS-01 JSON export form | P0 | ⏳ Parked — CLI export exists, not wired into rotation |
+| | OPS-01 Off-site copy | P0 | ⏳ Parked — EC IT dependency |
+| | OPS-01 Quarterly restore test | P0 | ✅ Procedural — integrators; no app work |
 | **DIF** | DIF-01 Field-by-field diff between versions | P0 | ⏳ Pending — deferred behind DEL/HIST |
 | | DIF-02 Smart diff (AI-assisted classification) | P1/M3 | ⏳ Pending |
 | | DIF-03 Digests (AI-drafted, human-validated) | P1/M3 | ⏳ Pending |
@@ -178,7 +184,7 @@ Progress is tracked per requirement. Topics with no started work carry their v0.
 | **DAM** | DAM-01 Upload, version, associate documents | P1/M4 | ⏳ Pending |
 | | DAM-02 Full-text search over documents | P1/M4 | ⏳ Pending |
 
-**Pending P0 items:** **RBA** (implementation pending — design note complete), **OPS** (backup & restore), **DIF** (version diff), and the **NAV** cross-content text-search gap (parked by choice). LCM, DEL P0, HIST, FBK and MOD (all three requirements) are complete. Within DEL, release/decommission/hard-delete/edition-deletion are all correctly P1.
+**Pending P0 items:** **RBA** (implementation pending — design note complete), **DIF** (version diff), and the **NAV** cross-content text-search gap (parked by choice). Within OPS, the database backup is built and verified; the JSON export form and off-site copy are parked. LCM, DEL P0, HIST, FBK and MOD (all three requirements) are complete. Within DEL, release/decommission/hard-delete/edition-deletion are all correctly P1.
 
 > The P0/P1 split *within* the DEL topic is authoritative in its [design note](./odip-audit-delete-design.md) §1 and §5; this table is the cross-topic roll-up.
 
