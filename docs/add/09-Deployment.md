@@ -42,7 +42,7 @@ The runtime directory structure under `ODIP_HOME` is created automatically by `o
 $ODIP_HOME/
 ├── data/                  Neo4j database files
 ├── backups/               Manual and automated backups
-│   ├── auto/              Automated backup slots (daily, weekly, monthly)
+│   ├── auto/              Automated backup slots (daily, weekly, monthly, yearly)
 │   ├── adhoc/             Manual ad-hoc dumps
 │   └── reset/             Pre-reset dumps
 ├── logs/                  Server log files
@@ -129,9 +129,12 @@ export PATH="/cm/cots/osm/node.24.11.1/bin:$PATH"
 ```
 odip-proto/
 ├── bin/
-│   ├── odip-admin              Pod lifecycle, backup / restore (manual)
-│   ├── odip-backup             Automated periodic backup
+│   ├── odip-admin              Pod lifecycle, backup / restore (manual), backup timer setup
+│   ├── odip-backup             Automated periodic backup (rotation)
 │   └── odip-cli                CLI launcher
+├── systemd/
+│   ├── odip-backup.service     Backup service unit (reference template)
+│   └── odip-backup.timer       Backup schedule (OnCalendar)
 ├── workspace/
 │   ├── cli/                    CLI tool
 │   ├── server/                 Express API server
@@ -343,34 +346,48 @@ odip-admin dumps                             # list dumps across auto / adhoc / 
 
 ### 8.2 Automated Backup — `odip-backup`
 
-Three-slot rotation with fixed filenames. Cron wakes the script nightly; the age-threshold logic decides what action to take.
+Four-slot rotation with fixed filenames. `odip-backup` runs on each timer fire; the age-threshold logic decides what action to take.
 
 | Slot | File | Cadence | Source |
 |---|---|---|---|
 | daily | `auto/daily/neo4j.dump` | every 24h | fresh dump via `odip-admin dump` |
 | weekly | `auto/weekly/neo4j.dump` | every 7 days | promoted from daily |
 | monthly | `auto/monthly/neo4j.dump` | every 28 days | promoted from weekly |
+| yearly | `auto/yearly/neo4j.dump` | every 365 days | promoted from monthly |
 
-Promotions run before the fresh dump so the pre-dump state propagates up the chain.
+Promotions run before the fresh dump so the pre-dump state propagates up the chain. Each slot holds exactly one file; a slot is overwritten only when its age threshold is met, so the most recent dump of each kind is never deleted.
 
-**Setup**
+**Trigger mechanism — `systemd --user` timer**
 
-```bash
-chmod +x bin/odip-backup
-mkdir -p $ODIP_HOME/backups/auto
-```
+The schedule is a `systemd --user` timer on the host. The dump sequence (stop Neo4j, run `neo4j-admin`, restart Neo4j) requires host-level `podman`, which no in-pod container can reach — so the trigger runs on the host, not inside the pod.
 
-Add to crontab (`crontab -e`):
-
-```cron
-0 2 * * *  odip-backup >> $ODIP_HOME/backups/auto/odip-backup.log 2>&1
-```
-
-**Manual invocation**
+`systemd --user` is used rather than host cron because it survives logout (with lingering enabled), schedules in local time with correct DST handling, re-runs a missed backup at next boot (`Persistent=true`), and keeps status and logs in the journal. No root is required; lingering is the single host-level prerequisite and is user-settable:
 
 ```bash
-odip-backup                                  # default base dir from $ODIP_HOME/backups/auto
+loginctl enable-linger $USER
+```
+
+`odip-admin install` performs the one-time setup: it writes the service environment file (`~/.config/odip/backup.env`), generates the service unit with the absolute `odip-backup` path resolved, copies the timer, and enables it. The two units live in the repo under `systemd/`:
+
+- `odip-backup.service` — oneshot; runs `odip-backup` with the ODIP environment from the env file
+- `odip-backup.timer` — `OnCalendar=*-*-* 02:00:00`, `Persistent=true`
+
+The schedule is the single configuration point. To change it, edit `OnCalendar` in `~/.config/systemd/user/odip-backup.timer`, then `systemctl --user daemon-reload`. No rebuild.
+
+**Management**
+
+```bash
+odip-admin backup run        # trigger a backup immediately
+odip-admin backup status     # show timer schedule and last service result
+odip-admin backup log [N]    # show last N journal lines for the service
+```
+
+**Manual invocation (without the timer)**
+
+```bash
+odip-backup                                  # run the rotation directly
 odip-backup -b /path/to/backup-base
+odip-admin dump                              # unconditional ad-hoc dump (bypasses age threshold)
 ```
 
 ### 8.3 Server Standby Protocol

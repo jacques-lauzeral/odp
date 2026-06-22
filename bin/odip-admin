@@ -41,6 +41,7 @@ Commands:
   resume    Signal server to resume normal operation
   config-reload   Live-reload users.yaml / permissions.yaml (no restart)
   dumps     List available backup slots
+  backup    Manage the automated backup timer (run/status/log)
 
 Run 'odip-admin <command> -h' for command-specific options.
 EOF
@@ -217,7 +218,65 @@ build_odp_server() {
         $extra_args \
         -t "${ODIP_DOCKER_REGISTRY}/odp-server:latest" \
         "$ODIP_REPO"
-    [[ -n "${gem_proxy_file:-}" ]] && rm -f "$gem_proxy_file"
+    [[ -n "${gem_proxy_file:-}" ]] && rm -f "$gem_proxy_file" || true
+}
+
+install_backup_schedule() {
+    # Writes the env file the systemd user service reads, then installs and
+    # enables the timer. Runs entirely in user space (no root); relies on
+    # lingering being enabled so the timer fires when logged out:
+    #   loginctl enable-linger "$USER"
+    local unit_dir="${HOME}/.config/systemd/user"
+    local env_dir="${HOME}/.config/odip"
+    local env_file="${env_dir}/backup.env"
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        log "Warning: systemctl not found — skipping backup schedule setup"
+        return 0
+    fi
+
+    mkdir -p "$unit_dir" "$env_dir"
+
+    # Capture the current ODIP environment for the (shell-less) systemd service.
+    # odip-backup -> odip-admin dump needs these; a --user service inherits no
+    # shell rc, so they are written here and pulled in via EnvironmentFile.
+    cat > "$env_file" << ENV
+ODIP_REPO=${ODIP_REPO}
+ODIP_HOME=${ODIP_HOME}
+ODIP_DOCKER_REGISTRY=${ODIP_DOCKER_REGISTRY}
+ODIP_NPM_MODE=${ODIP_NPM_MODE:-podman}
+ODIP_GEM_MODE=${ODIP_GEM_MODE:-podman}
+PATH=${PATH}
+ENV
+    log "Wrote backup env file: ${env_file}"
+
+    # Generate the service unit with the absolute script path resolved now.
+    # systemd does NOT expand ${VAR} in the ExecStart binary path, so the path
+    # must be literal. EnvironmentFile still supplies the runtime env the script
+    # itself reads. Documentation= must be a bare URL/token (no spaces, ASCII).
+    cat > "${unit_dir}/odip-backup.service" << SERVICE
+[Unit]
+Description=ODIP automated database backup
+Documentation=https://odip/add/ch09
+
+[Service]
+Type=oneshot
+EnvironmentFile=${env_file}
+ExecStart=${ODIP_REPO}/bin/odip-backup
+SERVICE
+
+    # Timer carries no paths — copy the static unit from the repo.
+    cp "${ODIP_REPO}/systemd/odip-backup.timer" "${unit_dir}/odip-backup.timer"
+    log "Installed systemd user units: odip-backup.service, odip-backup.timer"
+
+    systemctl --user daemon-reload
+    systemctl --user enable --now odip-backup.timer
+    log "Enabled odip-backup.timer"
+
+    if [[ "$(loginctl show-user "$USER" --property=Linger --value 2>/dev/null)" != "yes" ]]; then
+        log "NOTE: lingering is not enabled — the timer will not fire while you are logged out."
+        log "      Enable it with: loginctl enable-linger $USER"
+    fi
 }
 
 # --- Commands ---
@@ -347,6 +406,7 @@ EOF
     install_host_dependencies
     build_odp_server
     build_web_client
+    install_backup_schedule
 
     log "Installation complete"
 }
@@ -725,7 +785,7 @@ cmd_dumps() {
     local now; now=$(date +%s)
 
     print_section_header "AUTO"
-    for slot in daily weekly monthly; do
+    for slot in daily weekly monthly yearly; do
         local dump="$base/auto/$slot/neo4j.dump"
         if [[ -f "$dump" ]]; then
             local size mtime age_sec
@@ -743,6 +803,45 @@ cmd_dumps() {
 
     print_section_header "RESET"
     scan_dump_dir "$base/reset" "$now"
+}
+
+cmd_backup() {
+    case "${1:-}" in
+        run)
+            shift
+            log "Running backup now (systemctl --user start odip-backup.service)"
+            systemctl --user start odip-backup.service
+            log "Backup service started — check 'odip-admin backup log'"
+            ;;
+        status)
+            systemctl --user list-timers odip-backup.timer --all
+            echo
+            systemctl --user status odip-backup.service --no-pager || true
+            ;;
+        log)
+            journalctl --user -u odip-backup.service --no-pager -n "${2:-50}"
+            ;;
+        -h|--help|"")
+            cat << 'EOF'
+Usage: odip-admin backup <subcommand>
+
+  Manage the systemd --user backup timer.
+
+Subcommands:
+  run        Trigger a backup immediately (runs odip-backup.service once)
+  status     Show timer schedule and last service result
+  log [N]    Show last N journal lines for the backup service (default 50)
+
+  The schedule itself lives in the timer unit (odip-backup.timer, OnCalendar).
+  To change it: edit ~/.config/systemd/user/odip-backup.timer, then
+  systemctl --user daemon-reload.
+
+  The timer only fires while logged out if lingering is enabled:
+  loginctl enable-linger $USER
+EOF
+            ;;
+        *) echo "Unknown backup subcommand: $1" >&2; exit 1 ;;
+    esac
 }
 
 # --- Dispatch ---
@@ -767,6 +866,7 @@ case "$COMMAND" in
     resume)    cmd_resume "$@" ;;
     config-reload) cmd_config_reload "$@" ;;
     dumps)     cmd_dumps "$@" ;;
+    backup)    cmd_backup "$@" ;;
     -h|--help) usage ;;
     *) echo "Unknown command: $COMMAND"; usage; exit 1 ;;
 esac

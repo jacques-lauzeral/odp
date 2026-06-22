@@ -1,0 +1,13 @@
+[Unit]
+Description=ODIP daily automated backup schedule
+Documentation=https://odip/add/ch09
+
+[Timer]
+# Daily at 02:00 local time. systemd handles DST correctly (unlike a UTC
+# container clock). Change the time here, then: systemctl --user daemon-reload
+OnCalendar=*-*-* 14:00:00
+# If the machine was off at the scheduled time, run once at next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

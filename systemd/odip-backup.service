@@ -1,0 +1,15 @@
+# REFERENCE TEMPLATE ONLY — not copied verbatim.
+# `odip-admin install` generates the live unit at
+# ~/.config/systemd/user/odip-backup.service with:
+#   - EnvironmentFile set to ~/.config/odip/backup.env
+#   - ExecStart set to the absolute ${ODIP_REPO}/bin/odip-backup path
+# systemd does not expand ${VAR} in the ExecStart binary path, which is why
+# the path is resolved at install time rather than left as a variable here.
+[Unit]
+Description=ODIP automated database backup
+Documentation=https://odip/add/ch09
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/odip/backup.env
+ExecStart=/absolute/path/to/odip/bin/odip-backup

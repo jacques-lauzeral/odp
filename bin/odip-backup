@@ -10,6 +10,7 @@
 #   daily   — 1 backup, refreshed every 24 hours
 #   weekly  — 1 backup, promoted from daily every 7 days
 #   monthly — 1 backup, promoted from weekly every 28 days
+#   yearly  — 1 backup, promoted from monthly every 365 days
 #
 # Promotion uses last-modified timestamps on dump files — no external state.
 #
@@ -37,9 +38,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADMIN_SCRIPT="$SCRIPT_DIR/odip-admin"
 
 # --- Thresholds (seconds) ---
-DAILY_THRESHOLD=$(( 24 * 3600 ))         # refresh daily   after 24h
-WEEKLY_THRESHOLD=$(( 7 * 24 * 3600 ))    # promote weekly  after 7 days
-MONTHLY_THRESHOLD=$(( 28 * 24 * 3600 ))  # promote monthly after 28 days
+DAILY_THRESHOLD=$(( 24 * 3600 ))              # refresh daily   after 24h
+WEEKLY_THRESHOLD=$(( 7 * 24 * 3600 ))        # promote weekly  after 7 days
+MONTHLY_THRESHOLD=$(( 28 * 24 * 3600 ))      # promote monthly after 28 days
+YEARLY_THRESHOLD=$(( 365 * 24 * 3600 ))      # promote yearly  after 365 days
 
 usage() {
     cat << 'EOF'
@@ -65,10 +67,12 @@ done
 DAILY_DIR="$BACKUP_BASE/daily"
 WEEKLY_DIR="$BACKUP_BASE/weekly"
 MONTHLY_DIR="$BACKUP_BASE/monthly"
+YEARLY_DIR="$BACKUP_BASE/yearly"
 
 DAILY_DUMP="$DAILY_DIR/neo4j.dump"
 WEEKLY_DUMP="$WEEKLY_DIR/neo4j.dump"
 MONTHLY_DUMP="$MONTHLY_DIR/neo4j.dump"
+YEARLY_DUMP="$YEARLY_DIR/neo4j.dump"
 
 # --- Helpers ---
 
@@ -103,6 +107,11 @@ promote() {
 log "=== ODIP backup start ==="
 
 # Step 1 — Promotions (oldest first, before fresh dump)
+
+YEARLY_AGE=$(file_age_seconds "$YEARLY_DUMP")
+if (( YEARLY_AGE >= YEARLY_THRESHOLD )) && [[ -f "$MONTHLY_DUMP" ]]; then
+    promote "$MONTHLY_DUMP" "$YEARLY_DIR" "yearly"
+fi
 
 MONTHLY_AGE=$(file_age_seconds "$MONTHLY_DUMP")
 if (( MONTHLY_AGE >= MONTHLY_THRESHOLD )) && [[ -f "$WEEKLY_DUMP" ]]; then
