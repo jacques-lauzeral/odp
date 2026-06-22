@@ -155,16 +155,108 @@ signal_resume() {
     log "Server resumed"
 }
 
+# Enter standby and arm an EXIT trap that resumes the server no matter how the
+# script leaves the critical section — normal completion, a failed dump, a
+# neo4j_start timeout, or set -e abort. Without this, any failure between
+# standby and resume would strand the server in standby (503 to all clients).
+# Call enter_standby_guarded at the start of the critical section and
+# leave_standby_guarded at the end (which resumes and disarms the trap).
+enter_standby_guarded() {
+    signal_standby
+    trap '_resume_quietly' EXIT
+}
+
+leave_standby_guarded() {
+    trap - EXIT
+    signal_resume
+}
+
+# Best-effort resume used by the trap; never aborts (it runs during teardown).
+_resume_quietly() {
+    log "Ensuring server is resumed (cleanup)"
+    curl -sf -X POST "${SERVER_URL}/admin/resume" >/dev/null 2>&1 \
+        && log "Server resumed" \
+        || log "Warning: could not resume server — run 'odip-admin resume' manually"
+}
+
 neo4j_stop() {
     log "Stopping Neo4j container"
-    podman stop odp-pod-neo4j
+    # podman stop can return before the container has fully transitioned to
+    # 'exited'; a subsequent start then fails with "container state improper".
+    # Worse, the container can wedge in 'stopping' (process dead, state stuck).
+    # Strategy: graceful stop, poll for exited, then escalate kill -> rm -f.
+    podman stop --time 60 odp-pod-neo4j 2>/dev/null || true
+
+    if _neo4j_wait_stopped 60; then return 0; fi
+
+    log "Neo4j did not stop gracefully — sending kill"
+    podman kill odp-pod-neo4j 2>/dev/null || true
+    if _neo4j_wait_stopped 15; then return 0; fi
+
+    log "Neo4j still not stopped — forcing removal (pod will recreate it)"
+    podman rm -f odp-pod-neo4j 2>/dev/null || true
+    if _neo4j_wait_gone 15; then return 0; fi
+
+    echo "Error: could not bring Neo4j container to a stoppable state" >&2
+    exit 1
+}
+
+# Poll until the container is in a startable stopped state. Returns 0 on success.
+_neo4j_wait_stopped() {
+    local tries="$1" state
+    for _ in $(seq 1 "$tries"); do
+        state=$(podman inspect --format '{{.State.Status}}' odp-pod-neo4j 2>/dev/null || echo "gone")
+        case "$state" in
+            exited|stopped|configured|created|gone) return 0 ;;
+        esac
+        sleep 1
+    done
+    return 1
+}
+
+# Poll until the container no longer exists (after rm -f). Returns 0 on success.
+_neo4j_wait_gone() {
+    local tries="$1"
+    for _ in $(seq 1 "$tries"); do
+        podman inspect odp-pod-neo4j >/dev/null 2>&1 || return 0
+        sleep 1
+    done
+    return 1
 }
 
 neo4j_start() {
     log "Starting Neo4j container"
-    podman start odp-pod-neo4j
+
+    # If neo4j_stop had to rm -f the container, it no longer exists as a stopped
+    # container — the pod must recreate it. Recreate by re-applying the pod spec
+    # (idempotent: existing containers are left alone, missing ones are created).
+    if ! podman inspect odp-pod-neo4j >/dev/null 2>&1; then
+        log "Neo4j container absent — recreating pod containers from spec"
+        envsubst < "$YAML_FILE" | podman play kube - >/dev/null
+    else
+        local state
+        state=$(podman inspect --format '{{.State.Status}}' odp-pod-neo4j 2>/dev/null || echo "unknown")
+        if [[ "$state" == "running" ]]; then
+            log "Neo4j already running"
+        else
+            podman start odp-pod-neo4j
+        fi
+    fi
+
+    # Wait until the database actually answers a query, not just until the
+    # container is up. cypher-shell is the authoritative readiness signal.
     log "Waiting for Neo4j to be ready..."
-    sleep 10
+    for _ in $(seq 1 60); do
+        if podman exec odp-pod-neo4j cypher-shell \
+                -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_PASSWORD:-password123}" \
+                "RETURN 1" >/dev/null 2>&1; then
+            log "Neo4j is ready"
+            return 0
+        fi
+        sleep 2
+    done
+    echo "Error: Neo4j did not become ready within timeout" >&2
+    exit 1
 }
 
 install_host_dependencies() {
@@ -547,7 +639,7 @@ EOF
     log "Creating backup directory: $backup_dir"
     mkdir -p "$backup_dir"
     chmod 777 "$backup_dir"
-    signal_standby
+    enter_standby_guarded
     neo4j_stop
     log "Dumping database to: $backup_dir"
     podman run --rm \
@@ -557,7 +649,7 @@ EOF
         "$neo4j_image" \
         database dump neo4j --to-path=/backup
     neo4j_start
-    signal_resume
+    leave_standby_guarded
     log "Backup complete: $backup_dir/neo4j.dump"
 }
 
@@ -574,8 +666,12 @@ Usage: odip-admin load [options]
 
   Place server in standby, stop Neo4j, load database from backup, restart Neo4j, resume server.
 
+  A load OVERWRITES the entire current database. Before loading, a safety dump
+  of the current data is taken to $ODIP_HOME/backups/reset/<timestamp>/ (a load
+  is conceptually a reset followed by a load). Requires YES confirmation.
+
 Options:
-  -b, --backup-dir <path>   Backup directory containing neo4j.dump (required)
+  -b, --backup-dir <path>   Backup directory containing neo4j.dump to load (required)
   -d, --data-dir <path>     Neo4j data directory (default: $ODIP_HOME/data)
   -i, --image <name>        Neo4j image (default: auto-detect from YAML)
   -h, --help                Show this help
@@ -589,8 +685,32 @@ EOF
     [[ ! -f "$backup_dir/neo4j.dump" ]] && { echo "Error: Backup file not found: $backup_dir/neo4j.dump" >&2; exit 1; }
     data_dir=$(extract_data_dir "$data_dir")
     neo4j_image=$(extract_neo4j_image "$neo4j_image")
-    signal_standby
+
+    local safety_dir="${ODIP_HOME}/backups/reset/$(date +%Y%m%d-%H%M)"
+    safety_dir=$(realpath -m "$safety_dir")
+    echo "==> This will OVERWRITE the current Neo4j database."
+    echo "    Loading from:"
+    echo "      $backup_dir/neo4j.dump"
+    echo "    A safety dump of the current data will be saved to:"
+    echo "      $safety_dir/neo4j.dump"
+    echo "    Data directory:"
+    echo "      $data_dir"
+    echo ""
+    read -r -p "Type YES to confirm: " CONFIRM
+    [[ "$CONFIRM" != "YES" ]] && { echo "Aborted."; exit 0; }
+
+    log "Creating safety backup directory: $safety_dir"
+    mkdir -p "$safety_dir"
+    chmod 777 "$safety_dir"
+    enter_standby_guarded
     neo4j_stop
+    log "Safety dump of current data to: $safety_dir"
+    podman run --rm \
+        --entrypoint neo4j-admin \
+        -v "$data_dir":/data \
+        -v "$safety_dir":/backup \
+        "$neo4j_image" \
+        database dump neo4j --to-path=/backup
     log "Loading database from: $backup_dir"
     podman run --rm \
         --entrypoint neo4j-admin \
@@ -599,8 +719,8 @@ EOF
         "$neo4j_image" \
         database load neo4j --from-path=/backup --overwrite-destination=true
     neo4j_start
-    signal_resume
-    log "Restore complete"
+    leave_standby_guarded
+    log "Restore complete. Pre-load safety dump preserved at: $safety_dir/neo4j.dump"
 }
 
 cmd_reset() {
@@ -644,7 +764,7 @@ EOF
     log "Creating backup directory: $backup_dir"
     mkdir -p "$backup_dir"
     chmod 777 "$backup_dir"
-    signal_standby
+    enter_standby_guarded
     neo4j_stop
     log "Dumping database to: $backup_dir"
     podman run --rm \
@@ -659,7 +779,7 @@ EOF
         "$neo4j_image" \
         bash -c "find /data -maxdepth 1 -mindepth 1 -exec rm -rf {} +"
     neo4j_start
-    signal_resume
+    leave_standby_guarded
     log "Reset complete. Pre-reset dump preserved at: $backup_dir/neo4j.dump"
 }
 

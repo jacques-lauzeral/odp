@@ -331,6 +331,8 @@ Neo4j data persists in `$ODIP_HOME/data`. No database migrations are required �
 | `load` | Standby → stop Neo4j → `neo4j-admin load --overwrite` → start Neo4j → resume |
 | `reset` | Standby → stop Neo4j → `neo4j-admin dump` → delete data dir → start Neo4j → resume (empty DB) |
 
+The stop and start steps are state-aware rather than fixed-delay. **Stop** issues a graceful `podman stop`, then polls until the container has actually reached a stopped state; if it does not (a large store can leave the container wedged in `stopping`), it escalates to `podman kill` and finally `podman rm -f`, letting the pod recreate the container on the next start. **Start** recreates the container from the pod spec if it was removed, then waits until Neo4j answers a `cypher-shell` query before returning — so a subsequent `neo4j-admin` operation never races a half-started database. This makes the dump/load cycle safe on slow or busy hosts where the previous fixed `sleep` could resume too early.
+
 ```bash
 odip-admin dump                              # default: $ODIP_HOME/backups/adhoc/<timestamp>/neo4j.dump
 odip-admin dump -b /path/to/backup
